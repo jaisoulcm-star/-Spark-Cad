@@ -1,0 +1,8 @@
+{
+  "name": " Spark Cat - CAD Design Hub",
+  "description": "Professional engineering and electrical CAD design platform for sharing, searching, and downloading CAD files.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
