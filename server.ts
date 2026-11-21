@@ -31,13 +31,31 @@ interface StoredUser extends User {
   passwordHash?: string;
 }
 
-const DATA_DIR = path.join(__dirname, 'data');
+const IS_VERCEL = Boolean(process.env.VERCEL);
+const DATA_DIR = IS_VERCEL ? path.join('/tmp', 'data') : path.join(__dirname, 'data');
 const UPLOADS_DIR = path.resolve(DATA_DIR, 'uploads');
 if (!fs.existsSync(DATA_DIR)) {
   fs.mkdirSync(DATA_DIR, { recursive: true });
 }
 if (!fs.existsSync(UPLOADS_DIR)) {
   fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+}
+
+if (IS_VERCEL) {
+  const srcDataDir = path.join(__dirname, 'data');
+  ['designs.json', 'categories.json', 'users.json', 'messages.json'].forEach((file) => {
+    const targetFile = path.join(DATA_DIR, file);
+    if (!fs.existsSync(targetFile)) {
+      const srcFile = path.join(srcDataDir, file);
+      if (fs.existsSync(srcFile)) {
+        try {
+          fs.copyFileSync(srcFile, targetFile);
+        } catch (e) {
+          console.error(`Failed to copy ${file} to /tmp/data:`, e);
+        }
+      }
+    }
+  });
 }
 
 const SESSION_SECRET =
