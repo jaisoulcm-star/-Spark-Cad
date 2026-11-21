@@ -10,11 +10,12 @@ interface AuthResult {
 interface LoginPageProps {
   onLogin: (email: string, pass: string) => Promise<AuthResult>;
   onRegister: (name: string, email: string, pass: string) => Promise<AuthResult>;
+  onGoogleLogin?: () => Promise<AuthResult>;
   onSetupAdmin?: (email: string, pass: string) => Promise<AuthResult>;
   onBackHome: () => void;
 }
 
-export function LoginPage({ onLogin, onRegister, onSetupAdmin, onBackHome }: LoginPageProps) {
+export function LoginPage({ onLogin, onRegister, onGoogleLogin, onSetupAdmin, onBackHome }: LoginPageProps) {
   const [isLoginTab, setIsLoginTab] = useState(true);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -213,10 +214,28 @@ export function LoginPage({ onLogin, onRegister, onSetupAdmin, onBackHome }: Log
             </button>
           </form>
 
-          {/* Non-admin Demo Engineer Login */}
-          <div className="mt-6 pt-5 border-t border-slate-200 space-y-4">
+          {/* Google & Demo Engineer Login */}
+          <div className="mt-6 pt-5 border-t border-slate-200 space-y-3">
+            {onGoogleLogin && (
+              <button
+                type="button"
+                disabled={loading}
+                onClick={async () => {
+                  setError('');
+                  setLoading(true);
+                  const res = await onGoogleLogin();
+                  setLoading(false);
+                  if (!res.success && res.error) {
+                    setError(res.error);
+                  }
+                }}
+                className="w-full min-h-[44px] bg-white hover:bg-slate-50 border border-slate-300 text-slate-900 font-semibold text-xs py-2.5 px-3 rounded-lg transition-colors flex items-center justify-center gap-2 shadow-2xs disabled:opacity-60"
+              >
+                <span>Continue with Google</span>
+              </button>
+            )}
             <div>
-              <p className="text-xs text-slate-500 text-center mb-3">Quick demo engineer preview:</p>
+              <p className="text-xs text-slate-500 text-center mb-2">Quick demo engineer preview:</p>
               <button
                 type="button"
                 onClick={() => handleDemoLogin('alex@engineering.io')}

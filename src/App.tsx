@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { signInWithPopup, signOut, onIdTokenChanged } from 'firebase/auth';
+import { auth, googleAuthProvider } from './lib/firebase';
 import { CADDesign, Category, ContactMessage, User, PlatformStats } from './types';
 import { Navbar } from './components/Navbar';
 import { Hero } from './components/Hero';
@@ -194,13 +196,13 @@ export default function App() {
       const authHeaders: HeadersInit = authToken ? { Authorization: `Bearer ${authToken}` } : {};
 
       const [designsRes, allPubRes, catRes, statsRes, adminRes, userRes, contactRes] = await Promise.all([
-        fetch(`/api/designs?${params.toString()}`),
-        fetch('/api/designs?sort=order'),
-        fetch('/api/categories'),
-        fetch('/api/stats'),
-        isAdmin ? fetch('/api/designs?status=all&sort=order', { headers: authHeaders }) : Promise.resolve(null),
-        isAdmin ? fetch('/api/users', { headers: authHeaders }) : Promise.resolve(null),
-        isAdmin ? fetch('/api/contact', { headers: authHeaders }) : Promise.resolve(null),
+        fetch(`/api/designs?${params.toString()}`, { cache: 'no-store' }),
+        fetch('/api/designs?sort=order', { cache: 'no-store' }),
+        fetch('/api/categories', { cache: 'no-store' }),
+        fetch('/api/stats', { cache: 'no-store' }),
+        isAdmin ? fetch('/api/designs?status=all&sort=order', { headers: authHeaders, cache: 'no-store' }) : Promise.resolve(null),
+        isAdmin ? fetch('/api/users', { headers: authHeaders, cache: 'no-store' }) : Promise.resolve(null),
+        isAdmin ? fetch('/api/contact', { headers: authHeaders, cache: 'no-store' }) : Promise.resolve(null),
       ]);
 
       let pubList: CADDesign[] = [];
@@ -246,6 +248,27 @@ export default function App() {
 
   useEffect(() => {
     fetchData();
+  }, [fetchData]);
+
+  // Synchronize live PostgreSQL updates when user returns to tab/window or periodically while active
+  useEffect(() => {
+    const handleVisibilityOrFocus = () => {
+      if (document.visibilityState === 'visible') {
+        fetchData();
+      }
+    };
+    window.addEventListener('focus', handleVisibilityOrFocus);
+    document.addEventListener('visibilitychange', handleVisibilityOrFocus);
+    const intervalId = window.setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        fetchData();
+      }
+    }, 15000);
+    return () => {
+      window.removeEventListener('focus', handleVisibilityOrFocus);
+      document.removeEventListener('visibilitychange', handleVisibilityOrFocus);
+      window.clearInterval(intervalId);
+    };
   }, [fetchData]);
 
   const handleSearchSubmit = (e: React.FormEvent) => {
@@ -507,7 +530,59 @@ export default function App() {
     }
   };
 
+  const handleGoogleLogin = useCallback(async (): Promise<{ success: boolean; error?: string }> => {
+    try {
+      const credential = await signInWithPopup(auth, googleAuthProvider);
+      const idToken = await credential.user.getIdToken();
+      const res = await fetch('/api/auth/me', {
+        headers: { Authorization: `Bearer ${idToken}` },
+        cache: 'no-store',
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.success && data.user) {
+        setAuthToken(idToken);
+        setCurrentUser(data.user);
+        const nextView = data.user.role === 'admin' ? 'admin' : 'library';
+        if (!selectedDesign) {
+          setCurrentView(nextView);
+          syncUrl(nextView, null);
+        }
+        showToast(`Signed in as ${data.user.name}`);
+        return { success: true };
+      }
+      return { success: false, error: data.error || 'Could not verify Google account with server.' };
+    } catch (err: any) {
+      if (err?.code === 'auth/popup-closed-by-user') {
+        return { success: false, error: 'Google sign-in popup was closed.' };
+      }
+      console.error('Google Sign-In error:', err);
+      return { success: false, error: 'Unable to complete Google sign-in.' };
+    }
+  }, [selectedDesign, showToast, syncUrl]);
+
+  useEffect(() => {
+    const unsubscribe = onIdTokenChanged(auth, async (fbUser) => {
+      if (!fbUser) return;
+      try {
+        const idToken = await fbUser.getIdToken();
+        const res = await fetch('/api/auth/me', {
+          headers: { Authorization: `Bearer ${idToken}` },
+          cache: 'no-store',
+        });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok && data.success && data.user) {
+          setAuthToken(idToken);
+          setCurrentUser(data.user);
+        }
+      } catch {
+        // Ignore transient token sync issues
+      }
+    });
+    return () => unsubscribe();
+  }, []);
+
   const handleLogout = () => {
+    signOut(auth).catch(() => {});
     setAuthToken(null);
     setCurrentUser(null);
     setAdminDesigns([]);
@@ -947,6 +1022,7 @@ export default function App() {
           onLogin={handleLogin}
           onRegister={handleRegister}
           onSetupAdmin={handleSetupAdmin}
+          onGoogleLogin={handleGoogleLogin}
           onBackHome={() => navigateTo('home')}
         />
       </div>
@@ -1191,6 +1267,7 @@ export default function App() {
         onClose={() => setAuthModalOpen(false)}
         onLogin={handleLogin}
         onRegister={handleRegister}
+        onGoogleLogin={handleGoogleLogin}
       />
 
       {/* Upload / Edit Modal */}

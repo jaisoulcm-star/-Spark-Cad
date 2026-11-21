@@ -12,9 +12,10 @@ interface AuthModalProps {
   onClose: () => void;
   onLogin: (email: string, pass: string) => Promise<AuthResult>;
   onRegister: (name: string, email: string, pass: string) => Promise<AuthResult>;
+  onGoogleLogin?: () => Promise<AuthResult>;
 }
 
-export function AuthModal({ isOpen, onClose, onLogin, onRegister }: AuthModalProps) {
+export function AuthModal({ isOpen, onClose, onLogin, onRegister, onGoogleLogin }: AuthModalProps) {
   const [isLoginTab, setIsLoginTab] = useState(true);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -209,16 +210,38 @@ export function AuthModal({ isOpen, onClose, onLogin, onRegister }: AuthModalPro
           </button>
         </form>
 
-        <div className="mt-6 pt-5 border-t border-slate-200">
-          <p className="text-xs text-slate-500 text-center mb-3">Quick demo engineer preview:</p>
-          <button
-            type="button"
-            onClick={() => handleDemoLogin('alex@engineering.io')}
-            className="w-full min-h-[44px] bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-800 font-semibold text-xs py-2.5 px-3 rounded-lg transition-colors flex items-center justify-center gap-1.5"
-          >
-            <UserIcon className="w-3.5 h-3.5 text-slate-500" />
-            <span>Demo Engineer</span>
-          </button>
+        <div className="mt-6 pt-5 border-t border-slate-200 space-y-3">
+          {onGoogleLogin && (
+            <button
+              type="button"
+              disabled={loading}
+              onClick={async () => {
+                setError('');
+                setLoading(true);
+                const res = await onGoogleLogin();
+                setLoading(false);
+                if (res.success) {
+                  onClose();
+                } else if (res.error) {
+                  setError(res.error);
+                }
+              }}
+              className="w-full min-h-[44px] bg-white hover:bg-slate-50 border border-slate-300 text-slate-900 font-semibold text-xs py-2.5 px-3 rounded-lg transition-colors flex items-center justify-center gap-2 shadow-2xs disabled:opacity-60"
+            >
+              <span>Continue with Google</span>
+            </button>
+          )}
+          <div>
+            <p className="text-xs text-slate-500 text-center mb-2">Quick demo engineer preview:</p>
+            <button
+              type="button"
+              onClick={() => handleDemoLogin('alex@engineering.io')}
+              className="w-full min-h-[44px] bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-800 font-semibold text-xs py-2.5 px-3 rounded-lg transition-colors flex items-center justify-center gap-1.5"
+            >
+              <UserIcon className="w-3.5 h-3.5 text-slate-500" />
+              <span>Demo Engineer</span>
+            </button>
+          </div>
         </div>
       </div>
     </div>
