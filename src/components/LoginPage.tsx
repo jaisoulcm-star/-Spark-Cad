@@ -15,31 +15,13 @@ interface LoginPageProps {
   onBackHome: () => void;
 }
 
-export function LoginPage({ onLogin, onRegister, onGoogleLogin, onSetupAdmin, onBackHome }: LoginPageProps) {
+export function LoginPage({ onLogin, onRegister, onBackHome }: LoginPageProps) {
   const [isLoginTab, setIsLoginTab] = useState(true);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const [adminNeedsSetup, setAdminNeedsSetup] = useState(false);
-  const [setupEmail, setSetupEmail] = useState('');
-  const [setupPassword, setSetupPassword] = useState('');
-
-  useEffect(() => {
-    let active = true;
-    fetch('/api/auth/admin-status')
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data) => {
-        if (!active || !data) return;
-        setAdminNeedsSetup(Boolean(data.needsSetup));
-        if (data.adminEmail) setSetupEmail(data.adminEmail);
-      })
-      .catch(() => {});
-    return () => {
-      active = false;
-    };
-  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -50,7 +32,7 @@ export function LoginPage({ onLogin, onRegister, onGoogleLogin, onSetupAdmin, on
       if (isLoginTab) {
         const res = await onLogin(email, password);
         if (!res.success) {
-          setError(res.error || 'Invalid email or password. Try demo accounts below.');
+          setError(res.error || 'Invalid email or password.');
         }
       } else {
         if (!name.trim() || !email.trim() || !password) {
@@ -63,22 +45,10 @@ export function LoginPage({ onLogin, onRegister, onGoogleLogin, onSetupAdmin, on
           setError(res.error || 'Unable to create account.');
         }
       }
-    } catch (err) {
+    } catch {
       setError('An error occurred. Please try again.');
     } finally {
       setLoading(false);
-    }
-  };
-
-  const handleDemoLogin = async (demoEmail: string) => {
-    setError('');
-    setEmail(demoEmail);
-    setPassword('demo123');
-    setLoading(true);
-    const res = await onLogin(demoEmail, 'demo123');
-    setLoading(false);
-    if (!res.success) {
-      setError(res.error || 'Demo sign in failed.');
     }
   };
 
@@ -213,90 +183,6 @@ export function LoginPage({ onLogin, onRegister, onGoogleLogin, onSetupAdmin, on
               <ArrowRight className="w-4 h-4" />
             </button>
           </form>
-
-          {/* Google & Demo Engineer Login */}
-          <div className="mt-6 pt-5 border-t border-slate-200 space-y-3">
-            {onGoogleLogin && (
-              <button
-                type="button"
-                disabled={loading}
-                onClick={async () => {
-                  setError('');
-                  setLoading(true);
-                  const res = await onGoogleLogin();
-                  setLoading(false);
-                  if (!res.success && res.error) {
-                    setError(res.error);
-                  }
-                }}
-                className="w-full min-h-[44px] bg-white hover:bg-slate-50 border border-slate-300 text-slate-900 font-semibold text-xs py-2.5 px-3 rounded-lg transition-colors flex items-center justify-center gap-2 shadow-2xs disabled:opacity-60"
-              >
-                <span>Continue with Google</span>
-              </button>
-            )}
-            <div>
-              <p className="text-xs text-slate-500 text-center mb-2">Quick demo sign-in:</p>
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  disabled={loading}
-                  onClick={() => handleDemoLogin('admin@sparkcat.hub')}
-                  className="min-h-[44px] bg-blue-50 hover:bg-blue-100 border border-blue-200 text-blue-900 font-semibold text-xs py-2.5 px-3 rounded-lg transition-colors flex items-center justify-center gap-1.5 disabled:opacity-60"
-                >
-                  <Lock className="w-3.5 h-3.5 text-blue-700" />
-                  <span>Demo Admin</span>
-                </button>
-                <button
-                  type="button"
-                  disabled={loading}
-                  onClick={() => handleDemoLogin('alex@engineering.io')}
-                  className="min-h-[44px] bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-800 font-semibold text-xs py-2.5 px-3 rounded-lg transition-colors flex items-center justify-center gap-1.5 disabled:opacity-60"
-                >
-                  <UserIcon className="w-3.5 h-3.5 text-slate-500" />
-                  <span>Demo Engineer</span>
-                </button>
-              </div>
-            </div>
-
-            {adminNeedsSetup && onSetupAdmin && (
-              <div className="pt-4 border-t border-slate-200 space-y-3">
-                <div className="flex items-center gap-2 text-amber-700 text-xs font-semibold">
-                  <ShieldAlert className="w-4 h-4 shrink-0" />
-                  <span>First-Run Admin Setup</span>
-                </div>
-                <input
-                  type="email"
-                  aria-label="Admin email"
-                  value={setupEmail}
-                  onChange={(e) => setSetupEmail(e.target.value)}
-                  placeholder="Admin email"
-                  className="w-full bg-white text-slate-900 text-xs rounded-lg px-3 py-2 border border-slate-300 focus:outline-none focus:border-blue-700"
-                />
-                <input
-                  type="password"
-                  aria-label="Set initial admin password"
-                  value={setupPassword}
-                  onChange={(e) => setSetupPassword(e.target.value)}
-                  placeholder="Create admin password (6+ chars)"
-                  className="w-full bg-white text-slate-900 text-xs rounded-lg px-3 py-2 border border-slate-300 focus:outline-none focus:border-blue-700"
-                />
-                <button
-                  type="button"
-                  disabled={loading}
-                  onClick={async () => {
-                    setError('');
-                    setLoading(true);
-                    const res = await onSetupAdmin(setupEmail, setupPassword);
-                    setLoading(false);
-                    if (!res.success) setError(res.error || 'Failed to configure admin password.');
-                  }}
-                  className="w-full bg-slate-900 hover:bg-slate-800 text-white font-semibold text-xs py-2.5 px-3 rounded-lg transition-colors disabled:opacity-60"
-                >
-                  Claim Admin Account
-                </button>
-              </div>
-            )}
-          </div>
         </div>
       </div>
     </div>

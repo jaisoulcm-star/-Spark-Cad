@@ -43,7 +43,7 @@ export function AuthModal({ isOpen, onClose, onLogin, onRegister, onGoogleLogin 
         if (res.success) {
           onClose();
         } else {
-          setError(res.error || 'Invalid email or password. Try demo credentials below.');
+          setError(res.error || 'Invalid email or password.');
         }
       } else {
         if (!name.trim() || !email.trim() || !password) {
@@ -58,24 +58,10 @@ export function AuthModal({ isOpen, onClose, onLogin, onRegister, onGoogleLogin 
           setError(res.error || 'Unable to register account.');
         }
       }
-    } catch (err) {
+    } catch {
       setError('An error occurred. Please try again.');
     } finally {
       setLoading(false);
-    }
-  };
-
-  const handleDemoLogin = async (demoEmail: string) => {
-    setError('');
-    setEmail(demoEmail);
-    setPassword('demo123');
-    setLoading(true);
-    const res = await onLogin(demoEmail, 'demo123');
-    setLoading(false);
-    if (res.success) {
-      onClose();
-    } else {
-      setError(res.error || 'Demo sign in failed.');
     }
   };
 
@@ -209,52 +195,6 @@ export function AuthModal({ isOpen, onClose, onLogin, onRegister, onGoogleLogin 
             <ArrowRight className="w-4 h-4" />
           </button>
         </form>
-
-        <div className="mt-6 pt-5 border-t border-slate-200 space-y-3">
-          {onGoogleLogin && (
-            <button
-              type="button"
-              disabled={loading}
-              onClick={async () => {
-                setError('');
-                setLoading(true);
-                const res = await onGoogleLogin();
-                setLoading(false);
-                if (res.success) {
-                  onClose();
-                } else if (res.error) {
-                  setError(res.error);
-                }
-              }}
-              className="w-full min-h-[44px] bg-white hover:bg-slate-50 border border-slate-300 text-slate-900 font-semibold text-xs py-2.5 px-3 rounded-lg transition-colors flex items-center justify-center gap-2 shadow-2xs disabled:opacity-60"
-            >
-              <span>Continue with Google</span>
-            </button>
-          )}
-          <div>
-            <p className="text-xs text-slate-500 text-center mb-2">Quick demo sign-in:</p>
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                disabled={loading}
-                onClick={() => handleDemoLogin('admin@sparkcat.hub')}
-                className="min-h-[44px] bg-blue-50 hover:bg-blue-100 border border-blue-200 text-blue-900 font-semibold text-xs py-2.5 px-3 rounded-lg transition-colors flex items-center justify-center gap-1.5 disabled:opacity-60"
-              >
-                <Lock className="w-3.5 h-3.5 text-blue-700" />
-                <span>Demo Admin</span>
-              </button>
-              <button
-                type="button"
-                disabled={loading}
-                onClick={() => handleDemoLogin('alex@engineering.io')}
-                className="min-h-[44px] bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-800 font-semibold text-xs py-2.5 px-3 rounded-lg transition-colors flex items-center justify-center gap-1.5 disabled:opacity-60"
-              >
-                <UserIcon className="w-3.5 h-3.5 text-slate-500" />
-                <span>Demo Engineer</span>
-              </button>
-            </div>
-          </div>
-        </div>
       </div>
     </div>
   );
