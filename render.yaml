@@ -1,0 +1,23 @@
+services:
+  - type: web
+    name: spark-cad
+    runtime: node
+    plan: free
+    buildCommand: npm install && npm run build
+    startCommand: npm run start
+    healthCheckPath: /api/categories
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: SUPABASE_STORAGE_BUCKET
+        value: cad-uploads
+      - key: ADMIN_EMAIL
+        value: venimurugesh@gmail.com
+      - key: SESSION_SECRET
+        generateValue: true

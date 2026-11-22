@@ -56,6 +56,7 @@ import {
   setSessionCookie,
   type AuthRequest,
 } from './src/middleware/auth.ts';
+import { uploadToSupabaseStorage } from './src/lib/supabaseStorage.ts';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -117,15 +118,29 @@ async function savePreviewImageToDb(
   if (!mimeType) return undefined;
 
   const ext = mimeType.split('/')[1] || 'png';
+  const filename = `preview-${designId}.${ext}`;
+
+  // 1. Always persist binary payload in PostgreSQL storage_files table so it never vanishes
   await saveStorageFileInDb({
     id: `preview-${designId}`,
     designId,
     fileType: 'preview',
-    filename: `preview-${designId}.${ext}`,
+    filename,
     mimeType,
     sizeBytes: buf.length,
     dataBase64: buf.toString('base64'),
   });
+
+  // 2. Also upload to Supabase Storage bucket if SUPABASE_URL + key are configured
+  const supabaseUpload = await uploadToSupabaseStorage({
+    storagePath: `previews/${filename}`,
+    buffer: buf,
+    mimeType,
+  });
+  if (supabaseUpload?.publicUrl) {
+    return supabaseUpload.publicUrl;
+  }
+
   return `/api/designs/${designId}/preview?v=${Date.now()}`;
 }
 
@@ -144,6 +159,7 @@ async function saveUploadedCadFileToDb(
   if (buf.length === 0) return undefined;
   const safeName = sanitizeOriginalFilename(originalFilename) || `${designId}.cad`;
 
+  // 1. Always persist binary payload in PostgreSQL storage_files table
   await saveStorageFileInDb({
     id: `cad-${designId}`,
     designId,
@@ -153,6 +169,14 @@ async function saveUploadedCadFileToDb(
     sizeBytes: buf.length,
     dataBase64: buf.toString('base64'),
   });
+
+  // 2. Mirror CAD file to Supabase Storage if configured
+  await uploadToSupabaseStorage({
+    storagePath: `files/${designId}/${safeName}`,
+    buffer: buf,
+    mimeType: 'application/octet-stream',
+  });
+
   return safeName;
 }
 

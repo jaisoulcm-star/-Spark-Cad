@@ -1,5 +1,5 @@
 import { asc, eq } from 'drizzle-orm';
-import { db } from './index.ts';
+import { db, ensureDatabaseSchemaInitialized } from './index.ts';
 import {
   categories,
   contactMessages,
@@ -9,6 +9,7 @@ import {
 } from './schema.ts';
 import { ensureSeedUsers, SEED_USERS } from './users.ts';
 import { sanitizeDesignTitle } from '../utils/cadHelpers.ts';
+import { deleteFromSupabaseStorage } from '../lib/supabaseStorage.ts';
 import type { CADDesign, Category, ContactMessage, DesignReview } from '../types.ts';
 
 export const SEED_CATEGORIES: Category[] = [
@@ -139,6 +140,7 @@ export async function ensureSeedCategories(): Promise<void> {
 
   seedCategoriesInFlight = (async () => {
     try {
+      await ensureDatabaseSchemaInitialized();
       const existing = await db.select().from(categories);
       if (existing.length > 0) {
         for (const row of existing) {
@@ -266,6 +268,7 @@ export async function deleteCategoryFromDb(
 
 export async function getAllDesignsFromDb(): Promise<CADDesign[]> {
   try {
+    await ensureDatabaseSchemaInitialized();
     const rows = await db.select().from(designs).orderBy(asc(designs.order));
     memoryDesignsCache.clear();
     return rows.map((r) => syncDesignCache(mapRowToDesign(r)));
@@ -340,6 +343,22 @@ export async function deleteDesignFromDb(id: string): Promise<boolean> {
   memoryStorageCache.delete(`preview-${id}`);
   memoryStorageCache.delete(`cad-${id}`);
   try {
+    const existingFiles = await db
+      .select()
+      .from(storageFiles)
+      .where(eq(storageFiles.designId, id));
+    const pathsToRemove: string[] = [];
+    for (const f of existingFiles) {
+      if (f.fileType === 'preview') {
+        pathsToRemove.push(`previews/${f.filename}`);
+      } else if (f.fileType === 'cad') {
+        pathsToRemove.push(`files/${id}/${f.filename}`);
+      }
+    }
+    if (pathsToRemove.length > 0) {
+      await deleteFromSupabaseStorage(pathsToRemove);
+    }
+
     await db.delete(storageFiles).where(eq(storageFiles.designId, id));
     const deleted = await db.delete(designs).where(eq(designs.id, id)).returning();
     return deleted.length > 0 || hadCached;

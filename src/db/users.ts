@@ -1,5 +1,5 @@
 import { eq } from 'drizzle-orm';
-import { db } from './index.ts';
+import { db, ensureDatabaseSchemaInitialized } from './index.ts';
 import { users } from './schema.ts';
 import type { User } from '../types.ts';
 
@@ -84,6 +84,7 @@ export async function ensureSeedUsers(): Promise<void> {
 
   seedUsersInFlight = (async () => {
     try {
+      await ensureDatabaseSchemaInitialized();
       const existing = await db.select().from(users);
       if (existing.length > 0) {
         for (const row of existing) {
