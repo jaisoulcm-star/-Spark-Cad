@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { CADDesign, Category } from '../types';
-import { parseDroppedCadFileMeta } from '../utils/cadHelpers';
+import { isRandomIdentifierOrHash, parseDroppedCadFileMeta, sanitizeDesignTitle } from '../utils/cadHelpers';
 import { X, Upload, FileUp, Trash2, Image as ImageIcon } from 'lucide-react';
 
 interface UploadDesignPayload extends Partial<CADDesign> {
@@ -51,7 +51,7 @@ export function UploadModal({
   useEffect(() => {
     if (!isOpen) return;
     if (editingDesign) {
-      setTitle(editingDesign.title);
+      setTitle(sanitizeDesignTitle(editingDesign.title, ''));
       setDescription(editingDesign.description);
       setCategory(editingDesign.category);
       setSoftware(editingDesign.software);
@@ -90,18 +90,27 @@ export function UploadModal({
   if (!isOpen) return null;
 
   const handleAttachFile = (file: File) => {
+    const isImageFile =
+      file.type.startsWith('image/') || /\.(png|jpe?g|webp|gif)$/i.test(file.name);
     const meta = parseDroppedCadFileMeta(file.name, file.size);
     setAttachedFilename(file.name);
     setFileSize(meta.fileSize);
-    setFormat(meta.format);
+    if (!isImageFile) {
+      setFormat(meta.format);
+    }
     if (!editingDesign) {
-      if (!title.trim()) setTitle(meta.title);
+      // Never auto-fill the title from a random hash, UUID, or auto-generated camera filename
+      if (!title.trim() && !isRandomIdentifierOrHash(file.name)) {
+        setTitle(meta.title);
+      }
       if (!description.trim()) setDescription(meta.description);
       setSoftware(meta.software);
       if (categories.some((c) => c.name === meta.category)) {
         setCategory(meta.category);
       }
-      setPreviewUrl(meta.previewUrl);
+      if (!isImageFile) {
+        setPreviewUrl(meta.previewUrl);
+      }
       setTagsInput(meta.tags.join(', '));
     }
 
@@ -110,6 +119,11 @@ export function UploadModal({
     reader.onload = () => {
       if (typeof reader.result === 'string') {
         setFileDataBase64(reader.result);
+        // If an image drawing was dropped into the main file dropzone, also use it as the preview image
+        if (isImageFile && !previewDataBase64) {
+          setPreviewDataBase64(reader.result);
+          setPreviewFilename(file.name);
+        }
       }
       setReadingFile(false);
     };
@@ -120,8 +134,8 @@ export function UploadModal({
   };
 
   const handleAttachPreviewImage = (file: File) => {
-    if (!file.type.startsWith('image/')) return;
-    if (file.size > 5 * 1024 * 1024) return;
+    if (!file.type.startsWith('image/') && !/\.(png|jpe?g|webp|gif)$/i.test(file.name)) return;
+    if (file.size > 15 * 1024 * 1024) return;
     setPreviewFilename(file.name);
     setReadingFile(true);
     const reader = new FileReader();
@@ -141,12 +155,13 @@ export function UploadModal({
     e.preventDefault();
     if (readingFile || saving) return;
     const tags = tagsInput.split(',').map(t => t.trim()).filter(Boolean);
+    const finalTitle = sanitizeDesignTitle(title);
 
     setSaving(true);
     try {
       const ok = await onSaveDesign({
         id: editingDesign ? editingDesign.id : undefined,
-        title,
+        title: finalTitle,
         description,
         category,
         software,
@@ -388,11 +403,11 @@ export function UploadModal({
               Preview Image (Upload or URL)
             </label>
             <div className="flex flex-col sm:flex-row gap-2.5 items-stretch sm:items-center">
-              <div className="w-16 h-12 rounded-lg overflow-hidden border border-slate-200 bg-slate-100 shrink-0 flex items-center justify-center">
+              <div className="w-16 h-12 rounded-lg overflow-hidden border border-slate-200 bg-white shrink-0 flex items-center justify-center p-0.5">
                 <img
                   src={previewDataBase64 || previewUrl || DEFAULT_PREVIEW_URL}
                   alt="Preview thumbnail"
-                  className="w-full h-full object-contain object-center"
+                  className="design-preview-image"
                 />
               </div>
               <input

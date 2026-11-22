@@ -25,6 +25,7 @@ import {
 
 export interface BatchDesignUploadItem extends Partial<CADDesign> {
   fileDataBase64?: string;
+  previewDataBase64?: string;
   originalFilename?: string;
 }
 
@@ -42,6 +43,7 @@ interface StagedFileDesign {
   status: 'published' | 'draft';
   tags: string[];
   fileDataBase64?: string;
+  previewDataBase64?: string;
 }
 
 interface AdminDashboardProps {
@@ -147,6 +149,8 @@ export function AdminDashboard({
 
     const newItems: StagedFileDesign[] = await Promise.all(
       fileList.map(async (file, idx) => {
+        const isImageFile =
+          file.type.startsWith('image/') || /\.(png|jpe?g|webp|gif)$/i.test(file.name);
         const meta = parseDroppedCadFileMeta(file.name, file.size);
         const validCategory = categories.some((c) => c.name === meta.category)
           ? meta.category
@@ -163,10 +167,11 @@ export function AdminDashboard({
           format: meta.format,
           complexity: 'Intermediate',
           fileSize: meta.fileSize,
-          previewUrl: meta.previewUrl,
+          previewUrl: isImageFile && fileDataBase64 ? fileDataBase64 : meta.previewUrl,
           status: 'published',
           tags: meta.tags,
           fileDataBase64,
+          ...(isImageFile && fileDataBase64 ? { previewDataBase64: fileDataBase64 } : {}),
         };
       })
     );

@@ -1,4 +1,5 @@
 import { CADDesign } from '../types';
+import { sanitizeDesignTitle } from '../utils/cadHelpers';
 import { Download, Eye, Heart, Star } from 'lucide-react';
 
 interface DesignCardProps {
@@ -18,19 +19,21 @@ export function DesignCard({
   isFavorite,
   onToggleFavorite
 }: DesignCardProps) {
+  const displayTitle = sanitizeDesignTitle(design.title);
+
   return (
     <article className="group bg-white border border-slate-200 hover:border-slate-300 rounded-xl overflow-hidden shadow-xs hover:shadow-md transition-all duration-200 flex flex-col">
       {/* Preview Image Container */}
-      <div className="relative h-48 w-full overflow-hidden bg-slate-100 border-b border-slate-100">
+      <div className="relative h-52 w-full overflow-hidden bg-white border-b border-slate-100 p-2">
         <button
           type="button"
           onClick={() => onSelect(design)}
-          aria-label={`Open ${design.title}`}
+          aria-label={`Open ${displayTitle}`}
           className="w-full h-full flex items-center justify-center text-left"
         >
           <img
             src={design.previewUrl || FALLBACK_PREVIEW}
-            alt={design.title}
+            alt={displayTitle}
             referrerPolicy="no-referrer"
             onError={(e) => {
               const target = e.currentTarget;
@@ -38,7 +41,7 @@ export function DesignCard({
                 target.src = FALLBACK_PREVIEW;
               }
             }}
-            className="w-full h-full object-contain object-center"
+            className="design-preview-image"
           />
         </button>
 
@@ -82,7 +85,7 @@ export function DesignCard({
               onClick={() => onSelect(design)}
               className="text-left focus:outline-none focus-visible:underline"
             >
-              {design.title}
+              {displayTitle}
             </button>
           </h3>
 

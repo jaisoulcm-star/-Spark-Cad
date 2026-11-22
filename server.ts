@@ -9,6 +9,7 @@ import {
   isValidEmail,
   recalculateDesignRating,
   reorderDesignsByIds,
+  sanitizeDesignTitle,
   sanitizePreviewUrl,
   slugifyCategory,
   validateDesignPayload,
@@ -107,7 +108,7 @@ async function savePreviewImageToDb(
   if (!cleanB64) return undefined;
 
   const buf = Buffer.from(cleanB64, 'base64');
-  if (buf.length === 0 || buf.length > 5 * 1024 * 1024) return undefined;
+  if (buf.length === 0 || buf.length > 15 * 1024 * 1024) return undefined;
   const mimeType = detectImageMimeType(buf);
   if (!mimeType) return undefined;
 
@@ -290,7 +291,7 @@ async function startServer() {
       );
       const savedPreviewUrl = await savePreviewImageToDb(
         designId,
-        req.body?.previewDataBase64
+        req.body?.previewDataBase64 || req.body?.fileDataBase64
       );
       const maxOrder = existingDesigns.reduce(
         (max, d, idx) => Math.max(max, typeof d.order === 'number' ? d.order : idx),
@@ -299,7 +300,7 @@ async function startServer() {
 
       const newDesign: CADDesign = {
         id: designId,
-        title: String(req.body.title).trim(),
+        title: sanitizeDesignTitle(req.body.title),
         description: String(req.body.description).trim(),
         category: req.body.category || 'Electrical Engineering',
         software: req.body.software || 'AutoCAD',
@@ -372,12 +373,12 @@ async function startServer() {
         );
         const savedPreviewUrl = await savePreviewImageToDb(
           designId,
-          item.previewDataBase64
+          item.previewDataBase64 || item.fileDataBase64
         );
 
         const newDesign: CADDesign = {
           id: designId,
-          title: String(item.title).trim(),
+          title: sanitizeDesignTitle(item.title),
           description: String(item.description).trim(),
           category: item.category || 'Electrical Engineering',
           software: item.software || 'AutoCAD',
@@ -457,7 +458,7 @@ async function startServer() {
       );
       const savedPreviewUrl = await savePreviewImageToDb(
         current.id,
-        req.body?.previewDataBase64
+        req.body?.previewDataBase64 || req.body?.fileDataBase64
       );
       const nextPreviewUrl = savedPreviewUrl
         ? savedPreviewUrl
@@ -467,7 +468,7 @@ async function startServer() {
 
       const updatedDesign: CADDesign = {
         ...current,
-        title: String(merged.title).trim(),
+        title: sanitizeDesignTitle(merged.title, current.title),
         description: String(merged.description).trim(),
         category: merged.category || current.category,
         software: merged.software || current.software,

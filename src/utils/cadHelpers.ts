@@ -482,6 +482,52 @@ export function formatFileSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+export function isRandomIdentifierOrHash(value: string): boolean {
+  const trimmed = value.trim();
+  if (!trimmed) return true;
+  const withoutExt = trimmed.replace(/\.[a-z0-9]{2,6}$/i, '').trim();
+  const compact = withoutExt.replace(/[\s_-]+/g, '');
+
+  // Hexadecimal hashes (MD5 32-char like B36982fcba0f3d3fe51caf35728470e, SHA, or 12+ hex IDs)
+  if (/^[0-9a-f]{12,}$/i.test(compact)) {
+    return true;
+  }
+  // Standard UUIDs (with or without hyphens/spaces)
+  if (
+    /^[0-9a-f]{8}[\s_-]?[0-9a-f]{4}[\s_-]?[0-9a-f]{4}[\s_-]?[0-9a-f]{4}[\s_-]?[0-9a-f]{12}$/i.test(
+      withoutExt
+    )
+  ) {
+    return true;
+  }
+  // Single unbroken token >= 16 chars with no spaces/underscores and 4+ mixed digits (random file token)
+  if (
+    !/[\s_-]/.test(withoutExt) &&
+    withoutExt.length >= 16 &&
+    (withoutExt.match(/\d/g) || []).length >= 4 &&
+    /[a-z]/i.test(withoutExt)
+  ) {
+    return true;
+  }
+  // Auto-generated camera/messenger filenames (e.g. IMG_20260315_112233, WhatsApp Image 2026...)
+  if (/^(img|dsc|pxl|screenshot|whatsapp[\s_-]*image)[\s_-]*[0-9]{4,}/i.test(withoutExt)) {
+    return true;
+  }
+  return false;
+}
+
+export function sanitizeDesignTitle(
+  rawTitle: unknown,
+  fallback = 'Untitled CAD Design'
+): string {
+  if (typeof rawTitle !== 'string') return fallback;
+  const trimmed = rawTitle.trim();
+  if (!trimmed || isRandomIdentifierOrHash(trimmed)) {
+    return fallback;
+  }
+  return trimmed;
+}
+
 export function parseDroppedCadFileMeta(
   fileName: string,
   sizeBytes: number
@@ -500,11 +546,15 @@ export function parseDroppedCadFileMeta(
   const ext = lastDot > 0 ? cleanName.slice(lastDot + 1).toLowerCase() : 'dwg';
   const base = lastDot > 0 ? cleanName.slice(0, lastDot) : cleanName;
 
-  const title = base
+  const candidateTitle = base
     .replace(/[_-]+/g, ' ')
     .replace(/\s+/g, ' ')
     .trim()
-    .replace(/\b\w/g, (ch) => ch.toUpperCase()) || 'Untitled CAD Design';
+    .replace(/\b\w/g, (ch) => ch.toUpperCase());
+
+  const title = isRandomIdentifierOrHash(base) || isRandomIdentifierOrHash(candidateTitle)
+    ? 'Untitled CAD Design'
+    : sanitizeDesignTitle(candidateTitle, 'Untitled CAD Design');
 
   let format: CADDesign['format'] = 'DWG';
   if (ext === 'dxf') format = 'DXF';
@@ -525,7 +575,7 @@ export function parseDroppedCadFileMeta(
     category = 'Industrial Automation';
     software = format === 'EPLAN' ? 'EPLAN' : 'AutoCAD';
     previewUrl = '/src/assets/images/cad_plc_automation_1795206880446.jpg';
-  } else if (/(hvac|mep|floor|arch|building|revit|duct)/.test(lower)) {
+  } else if (/(hvac|mep|floor|arch|building|revit|duct|house|bhk|plan|kitchen|residential)/.test(lower)) {
     category = 'Architectural & MEP';
     software = 'Revit';
     previewUrl = '/src/assets/images/cad_mep_hvac_1795206880519.jpg';

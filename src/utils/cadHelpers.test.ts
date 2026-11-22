@@ -12,6 +12,8 @@ import {
   moveItemInArray,
   reorderDesignsByIds,
   sanitizePreviewUrl,
+  sanitizeDesignTitle,
+  isRandomIdentifierOrHash,
   recalculateDesignRating,
   DEFAULT_PREVIEW_IMAGE,
 } from './cadHelpers';
@@ -205,3 +207,20 @@ test('recalculateDesignRating computes rounded average rating and review count',
   assert.equal(scored.rating, 4.5);
   assert.equal(scored.reviewsCount, 2);
 });
+
+test('isRandomIdentifierOrHash and sanitizeDesignTitle reject hashes/UUIDs and preserve real titles', () => {
+  assert.equal(isRandomIdentifierOrHash('B36982fcba0f3d3fe51caf35728470e'), true);
+  assert.equal(isRandomIdentifierOrHash('b36982fcba0f3d3fe51caf35728470e.jpg'), true);
+  assert.equal(isRandomIdentifierOrHash('550e8400-e29b-41d4-a716-446655440000'), true);
+  assert.equal(isRandomIdentifierOrHash('Modern 2BHK House Floor Plan'), false);
+  assert.equal(isRandomIdentifierOrHash('Contemporary Residential Floor Plan'), false);
+  assert.equal(isRandomIdentifierOrHash('Electrical Wall Profile Design'), false);
+
+  assert.equal(sanitizeDesignTitle('B36982fcba0f3d3fe51caf35728470e'), 'Untitled CAD Design');
+  assert.equal(sanitizeDesignTitle('Modern 2BHK House Floor Plan'), 'Modern 2BHK House Floor Plan');
+  assert.equal(
+    parseDroppedCadFileMeta('b36982fcba0f3d3fe51caf35728470e.jpg', 420_000).title,
+    'Untitled CAD Design'
+  );
+});
+

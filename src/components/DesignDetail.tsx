@@ -1,5 +1,23 @@
 import { CADDesign, User as AppUser } from '../types';
-import { Download, Heart, Star, ArrowLeft, Calendar, User, FileCode, HardDrive, ShieldCheck, Cpu, Share2, Check, MessageSquare, Trash2 } from 'lucide-react';
+import { sanitizeDesignTitle } from '../utils/cadHelpers';
+import {
+  Download,
+  Heart,
+  Star,
+  ArrowLeft,
+  Calendar,
+  User,
+  FileCode,
+  HardDrive,
+  ShieldCheck,
+  Cpu,
+  Share2,
+  Check,
+  MessageSquare,
+  Trash2,
+  Layers,
+  Edit3,
+} from 'lucide-react';
 import React, { useState } from 'react';
 
 interface DesignDetailProps {
@@ -12,6 +30,7 @@ interface DesignDetailProps {
   onOpenAuth: () => void;
   onSubmitReview?: (designId: string, rating: number, comment: string) => Promise<{ success: boolean; error?: string }>;
   onDeleteReview?: (designId: string, reviewId: string) => Promise<void>;
+  onEditDesign?: (design: CADDesign) => void;
   allDesigns: CADDesign[];
   onSelectDesign: (d: CADDesign) => void;
 }
@@ -28,6 +47,7 @@ export function DesignDetail({
   onOpenAuth,
   onSubmitReview,
   onDeleteReview,
+  onEditDesign,
   allDesigns,
   onSelectDesign
 }: DesignDetailProps) {
@@ -36,8 +56,10 @@ export function DesignDetail({
   const [reviewComment, setReviewComment] = useState<string>('');
   const [reviewError, setReviewError] = useState<string>('');
   const [submittingReview, setSubmittingReview] = useState<boolean>(false);
+  const [naturalSize, setNaturalSize] = useState<{ width: number; height: number } | null>(null);
 
   const reviews = Array.isArray(design.reviews) ? design.reviews : [];
+  const displayTitle = sanitizeDesignTitle(design.title);
 
   const handleShare = async () => {
     const url = `${window.location.origin}/?design=${encodeURIComponent(design.id)}`;
@@ -91,169 +113,271 @@ export function DesignDetail({
     .slice(0, 3);
 
   return (
-    <div className="min-h-screen bg-slate-50 py-6 sm:py-10 px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen bg-slate-50 py-6 sm:py-10 px-4 sm:px-6 lg:px-8 overflow-x-hidden">
       <div className="max-w-6xl mx-auto">
-        {/* Back Button */}
-        <button
-          type="button"
-          onClick={onBack}
-          className="inline-flex items-center gap-2 text-slate-600 hover:text-slate-900 bg-white border border-slate-200 hover:border-slate-300 px-4 py-2.5 min-h-[44px] rounded-lg mb-5 sm:mb-8 transition-colors text-xs font-semibold shadow-xs"
-        >
-          <ArrowLeft className="w-4 h-4" />
-          <span>Back to Library</span>
-        </button>
+        {/* Top Navigation Row */}
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-5 sm:mb-7">
+          <button
+            type="button"
+            onClick={onBack}
+            className="inline-flex items-center gap-2 text-slate-700 hover:text-slate-900 bg-white border border-slate-200 hover:border-slate-300 px-4 py-2.5 min-h-[42px] rounded-lg transition-colors text-xs font-semibold shadow-xs"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            <span>Back to Library</span>
+          </button>
 
-        {/* Mobile order: 1. Preview -> 2. Title, Download & Specs -> 3. Overview & Tags */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 lg:gap-8 items-start">
-          {/* Block 1: Main Preview Image */}
-          <div className="order-1 lg:col-span-2 bg-white border border-slate-200 rounded-xl overflow-hidden shadow-xs relative">
-            <div className="relative h-[240px] sm:h-[380px] lg:h-[440px] w-full bg-slate-100 flex items-center justify-center">
+          {currentUser?.role === 'admin' && onEditDesign && (
+            <button
+              type="button"
+              onClick={() => onEditDesign(design)}
+              className="inline-flex items-center gap-2 text-blue-700 hover:text-blue-800 bg-white border border-blue-200 hover:border-blue-300 px-4 py-2.5 min-h-[42px] rounded-lg transition-colors text-xs font-semibold shadow-xs"
+            >
+              <Edit3 className="w-3.5 h-3.5" />
+              <span>Edit Design Details</span>
+            </button>
+          )}
+        </div>
+
+        {/* Desktop & Tablet: Left Image Preview + Right Information Panel | Mobile: Stacked vertically */}
+        <div className="grid grid-cols-1 md:grid-cols-12 gap-6 lg:gap-8 items-start">
+          {/* Block 1: Main CAD Drawing Preview (Adapts to natural image dimensions, neutral white background, zero cropping) */}
+          <div className="order-1 md:col-span-7 lg:col-span-8 bg-white border border-slate-200 rounded-xl overflow-hidden shadow-xs">
+            {/* Drawing Toolbar Header (keeps buttons off the CAD drawing corners) */}
+            <div className="px-4 sm:px-5 py-3 bg-slate-50/80 border-b border-slate-200/80 flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="text-xs font-semibold text-slate-600 truncate">
+                  CAD Drawing Preview
+                </span>
+                {naturalSize && (
+                  <span className="hidden sm:inline-block text-[11px] font-mono text-slate-400 tabular-nums">
+                    ({naturalSize.width} × {naturalSize.height} px)
+                  </span>
+                )}
+              </div>
+
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={handleShare}
+                  aria-label="Share design link"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-slate-50 text-slate-700 rounded-lg border border-slate-200 transition-colors shadow-2xs text-xs font-semibold"
+                  title="Share Design Link"
+                >
+                  {copied ? (
+                    <>
+                      <Check className="w-3.5 h-3.5 text-emerald-600" />
+                      <span className="text-emerald-700">Copied</span>
+                    </>
+                  ) : (
+                    <>
+                      <Share2 className="w-3.5 h-3.5" />
+                      <span>Share</span>
+                    </>
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onToggleFavorite(design.id)}
+                  aria-label={isFavorite ? 'Remove from favorites' : 'Add to favorites'}
+                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border transition-colors shadow-2xs text-xs font-semibold ${
+                    isFavorite
+                      ? 'bg-rose-600 text-white border-rose-600'
+                      : 'bg-white text-slate-700 hover:text-slate-900 hover:bg-slate-50 border-slate-200'
+                  }`}
+                  title={isFavorite ? 'Remove from Favorites' : 'Add to Favorites'}
+                >
+                  <Heart className={`w-3.5 h-3.5 ${isFavorite ? 'fill-white' : ''}`} />
+                  <span>{isFavorite ? 'Saved' : 'Save'}</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Adaptive White Preview Canvas — Never crops, zooms, or distorts */}
+            <div className="w-full bg-white p-3 sm:p-6 flex items-center justify-center">
               <img
                 src={design.previewUrl || FALLBACK_PREVIEW}
-                alt={design.title}
+                alt={displayTitle}
                 referrerPolicy="no-referrer"
+                onLoad={(e) => {
+                  const img = e.currentTarget;
+                  if (img.naturalWidth && img.naturalHeight) {
+                    setNaturalSize({ width: img.naturalWidth, height: img.naturalHeight });
+                  }
+                }}
                 onError={(e) => {
                   const target = e.currentTarget;
                   if (target.src !== window.location.origin + FALLBACK_PREVIEW) {
                     target.src = FALLBACK_PREVIEW;
                   }
                 }}
-                className="w-full h-full object-contain object-center"
+                className="design-preview-image"
               />
-
-              <div className="absolute top-3 right-3 sm:top-4 sm:right-4 flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={handleShare}
-                  aria-label="Share design link"
-                  className="min-h-[44px] min-w-[44px] sm:min-h-0 sm:min-w-0 p-2.5 flex items-center justify-center bg-white/95 hover:bg-white text-slate-700 rounded-lg border border-slate-200 transition-colors shadow-xs"
-                  title="Share Design Link"
-                >
-                  {copied ? <Check className="w-4 h-4 text-emerald-600" /> : <Share2 className="w-4 h-4" />}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => onToggleFavorite(design.id)}
-                  aria-label={isFavorite ? 'Remove from favorites' : 'Add to favorites'}
-                  className={`min-h-[44px] min-w-[44px] sm:min-h-0 sm:min-w-0 p-2.5 flex items-center justify-center rounded-lg border transition-colors shadow-xs ${
-                    isFavorite
-                      ? 'bg-rose-600 text-white border-rose-600'
-                      : 'bg-white/95 text-slate-700 hover:text-slate-900 border-slate-200'
-                  }`}
-                  title={isFavorite ? 'Remove from Favorites' : 'Add to Favorites'}
-                >
-                  <Heart className={`w-4 h-4 ${isFavorite ? 'fill-white' : ''}`} />
-                </button>
-              </div>
             </div>
           </div>
 
-          {/* Block 2: Title, Download CTA & Technical Specifications (2nd on mobile, Right sidebar on desktop) */}
-          <div className="order-2 lg:col-start-3 lg:row-start-1 lg:row-span-2 bg-white border border-slate-200 rounded-xl p-5 sm:p-6 shadow-xs">
-            <div className="flex items-center justify-between gap-2 text-xs mb-3">
-              <span className="font-semibold text-blue-700">
-                {design.category}
+          {/* Block 2: Redesigned Right-Side Design Information Panel */}
+          <aside className="order-2 md:col-span-5 lg:col-span-4 md:row-span-2 bg-white border border-slate-200 rounded-xl p-5 sm:p-6 shadow-xs">
+            {/* 1. Engineering Category */}
+            <div className="mb-3">
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-blue-50 text-blue-700 border border-blue-200/70 text-xs font-semibold tracking-wide">
+                <Layers className="w-3.5 h-3.5 shrink-0" />
+                <span>{design.category}</span>
               </span>
-              <div className="flex items-center gap-1 text-slate-700 font-semibold tabular-nums shrink-0">
-                <Star className="w-3.5 h-3.5 text-amber-500 fill-amber-500" />
-                <span>{design.rating}</span>
-                <span className="text-slate-400 font-normal">({design.reviewsCount})</span>
+            </div>
+
+            {/* 2. Design Title */}
+            <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 tracking-tight leading-snug break-words mb-2.5">
+              {displayTitle}
+            </h1>
+
+            {/* 3. Rating and Review Count */}
+            <div className="flex items-center gap-2 text-xs mb-4 pb-4 border-b border-slate-100">
+              <div className="flex items-center gap-0.5" aria-label={`Rated ${design.rating} out of 5`}>
+                {[1, 2, 3, 4, 5].map((star) => (
+                  <Star
+                    key={star}
+                    className={`w-3.5 h-3.5 ${
+                      star <= Math.round(design.rating)
+                        ? 'text-amber-500 fill-amber-500'
+                        : 'text-slate-200'
+                    }`}
+                  />
+                ))}
+              </div>
+              <span className="font-bold text-slate-900 tabular-nums">{Number(design.rating).toFixed(1)}</span>
+              <span className="text-slate-500 tabular-nums">
+                ({design.reviewsCount} {design.reviewsCount === 1 ? 'review' : 'reviews'})
+              </span>
+            </div>
+
+            {/* 4. CAD File Format, Software Compatibility, and File Size */}
+            <div className="grid grid-cols-3 gap-2 bg-slate-50 border border-slate-200/80 rounded-xl p-3 mb-5">
+              <div className="text-center px-1">
+                <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 mb-0.5">
+                  Format
+                </div>
+                <div className="text-xs font-mono font-bold text-slate-900 truncate">
+                  {design.format}
+                </div>
+              </div>
+              <div className="text-center px-1 border-x border-slate-200/80">
+                <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 mb-0.5">
+                  Software
+                </div>
+                <div className="text-xs font-semibold text-blue-700 truncate">
+                  {design.software}
+                </div>
+              </div>
+              <div className="text-center px-1">
+                <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 mb-0.5">
+                  File Size
+                </div>
+                <div className="text-xs font-mono font-bold text-slate-900 tabular-nums truncate">
+                  {design.fileSize}
+                </div>
               </div>
             </div>
 
-            <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 mb-2 leading-tight">
-              {design.title}
-            </h1>
-
-            <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-500 mb-5 sm:mb-6 font-mono">
-              <span>{design.software}</span>
-              <span aria-hidden="true">·</span>
-              <span>{design.format}</span>
-              <span aria-hidden="true">·</span>
-              <span>{design.fileSize}</span>
-            </div>
-
-            {/* Download Button */}
+            {/* 5. Primary Download Button */}
             <button
               type="button"
               onClick={() => onDownload(design)}
-              className="w-full min-h-[48px] bg-blue-700 hover:bg-blue-800 text-white font-semibold py-3.5 px-5 rounded-lg transition-colors flex items-center justify-center gap-2.5 mb-6 text-sm"
+              className="w-full min-h-[48px] bg-blue-700 hover:bg-blue-800 active:bg-blue-900 text-white font-semibold py-3.5 px-5 rounded-xl shadow-xs hover:shadow transition-all flex items-center justify-center gap-2.5 mb-6 text-sm cursor-pointer"
             >
               <Download className="w-4 h-4 shrink-0" />
               <span>Download CAD File ({design.fileSize})</span>
             </button>
 
-            {/* Technical Specifications List */}
-            <div className="space-y-1 pt-4 border-t border-slate-200">
-              <h3 className="text-xs font-semibold text-slate-500 mb-3">Technical Specifications</h3>
+            {/* 6. Technical Specifications */}
+            <div className="pt-4 border-t border-slate-200">
+              <h3 className="text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-3">
+                Technical Specifications
+              </h3>
 
-              <div className="flex items-center justify-between gap-3 text-xs py-2.5 border-b border-slate-100">
-                <span className="text-slate-500 flex items-center gap-2 shrink-0">
-                  <FileCode className="w-4 h-4 text-slate-400" />
-                  <span>Compatible Software</span>
-                </span>
-                <span className="font-semibold text-slate-900 text-right">{design.software}</span>
-              </div>
+              <dl className="divide-y divide-slate-100 text-xs">
+                <div className="flex items-center justify-between gap-3 py-2.5">
+                  <dt className="text-slate-500 flex items-center gap-2.5 shrink-0">
+                    <FileCode className="w-4 h-4 text-slate-400 shrink-0" />
+                    <span>Compatible Software</span>
+                  </dt>
+                  <dd className="font-semibold text-slate-900 text-right">{design.software}</dd>
+                </div>
 
-              <div className="flex items-center justify-between gap-3 text-xs py-2.5 border-b border-slate-100">
-                <span className="text-slate-500 flex items-center gap-2 shrink-0">
-                  <HardDrive className="w-4 h-4 text-slate-400" />
-                  <span>File Format</span>
-                </span>
-                <span className="font-mono font-semibold text-slate-900 text-right">{design.format}</span>
-              </div>
+                <div className="flex items-center justify-between gap-3 py-2.5">
+                  <dt className="text-slate-500 flex items-center gap-2.5 shrink-0">
+                    <HardDrive className="w-4 h-4 text-slate-400 shrink-0" />
+                    <span>CAD File Format</span>
+                  </dt>
+                  <dd className="font-mono font-semibold text-slate-900 text-right">{design.format}</dd>
+                </div>
 
-              <div className="flex items-center justify-between gap-3 text-xs py-2.5 border-b border-slate-100">
-                <span className="text-slate-500 flex items-center gap-2 shrink-0">
-                  <Cpu className="w-4 h-4 text-slate-400" />
-                  <span>Complexity Level</span>
-                </span>
-                <span className="font-semibold text-slate-900 text-right">{design.complexity}</span>
-              </div>
+                <div className="flex items-center justify-between gap-3 py-2.5">
+                  <dt className="text-slate-500 flex items-center gap-2.5 shrink-0">
+                    <Cpu className="w-4 h-4 text-slate-400 shrink-0" />
+                    <span>Complexity Level</span>
+                  </dt>
+                  <dd className="font-semibold text-slate-900 text-right">{design.complexity}</dd>
+                </div>
 
-              <div className="flex items-center justify-between gap-3 text-xs py-2.5 border-b border-slate-100">
-                <span className="text-slate-500 flex items-center gap-2 shrink-0">
-                  <HardDrive className="w-4 h-4 text-slate-400" />
-                  <span>File Size</span>
-                </span>
-                <span className="font-mono font-semibold text-slate-900 tabular-nums text-right">{design.fileSize}</span>
-              </div>
+                <div className="flex items-center justify-between gap-3 py-2.5">
+                  <dt className="text-slate-500 flex items-center gap-2.5 shrink-0">
+                    <HardDrive className="w-4 h-4 text-slate-400 shrink-0" />
+                    <span>Package Size</span>
+                  </dt>
+                  <dd className="font-mono font-semibold text-slate-900 tabular-nums text-right">
+                    {design.fileSize}
+                  </dd>
+                </div>
 
-              <div className="flex items-center justify-between gap-3 text-xs py-2.5 border-b border-slate-100">
-                <span className="text-slate-500 flex items-center gap-2 shrink-0">
-                  <Download className="w-4 h-4 text-slate-400" />
-                  <span>Total Downloads</span>
-                </span>
-                <span className="font-mono font-semibold text-slate-900 tabular-nums text-right">{design.downloadsCount.toLocaleString()}</span>
-              </div>
+                {/* 7. Total Downloads */}
+                <div className="flex items-center justify-between gap-3 py-2.5">
+                  <dt className="text-slate-500 flex items-center gap-2.5 shrink-0">
+                    <Download className="w-4 h-4 text-slate-400 shrink-0" />
+                    <span>Total Downloads</span>
+                  </dt>
+                  <dd className="font-mono font-semibold text-slate-900 tabular-nums text-right">
+                    {design.downloadsCount.toLocaleString()}
+                  </dd>
+                </div>
 
-              <div className="flex items-center justify-between gap-3 text-xs py-2.5 border-b border-slate-100">
-                <span className="text-slate-500 flex items-center gap-2 shrink-0">
-                  <Calendar className="w-4 h-4 text-slate-400" />
-                  <span>Upload Date</span>
-                </span>
-                <span className="font-mono font-semibold text-slate-900 tabular-nums text-right">{design.uploadedAt}</span>
-              </div>
+                {/* 8. Upload Date */}
+                <div className="flex items-center justify-between gap-3 py-2.5">
+                  <dt className="text-slate-500 flex items-center gap-2.5 shrink-0">
+                    <Calendar className="w-4 h-4 text-slate-400 shrink-0" />
+                    <span>Upload Date</span>
+                  </dt>
+                  <dd className="font-mono font-semibold text-slate-900 tabular-nums text-right">
+                    {design.uploadedAt}
+                  </dd>
+                </div>
 
-              <div className="flex items-center justify-between gap-3 text-xs py-2.5">
-                <span className="text-slate-500 flex items-center gap-2 shrink-0">
-                  <User className="w-4 h-4 text-slate-400" />
-                  <span>Uploaded By</span>
-                </span>
-                <span className="font-semibold text-slate-900 text-right truncate">{design.uploadedBy}</span>
-              </div>
+                {/* 9. Uploaded By */}
+                <div className="flex items-center justify-between gap-3 py-2.5">
+                  <dt className="text-slate-500 flex items-center gap-2.5 shrink-0">
+                    <User className="w-4 h-4 text-slate-400 shrink-0" />
+                    <span>Uploaded By</span>
+                  </dt>
+                  <dd className="font-semibold text-slate-900 text-right truncate">
+                    {design.uploadedBy}
+                  </dd>
+                </div>
+              </dl>
             </div>
 
-            <div className="mt-5 bg-slate-50 border border-slate-200 rounded-lg p-3.5 flex items-start gap-2.5">
+            {/* 10. Verification Information */}
+            <div className="mt-5 bg-slate-50 border border-slate-200/90 rounded-xl p-3.5 flex items-start gap-2.5">
               <ShieldCheck className="w-4 h-4 text-blue-700 shrink-0 mt-0.5" />
-              <p className="text-xs text-slate-600 leading-relaxed">
-                Verified engineering CAD file tested for software compatibility and industry drafting standards.
-              </p>
+              <div className="text-xs text-slate-600 leading-relaxed">
+                <span className="font-semibold text-slate-800 block mb-0.5">
+                  Verified Engineering CAD Asset
+                </span>
+                Checked for layer integrity, scale accuracy, and software compatibility.
+              </div>
             </div>
-          </div>
+          </aside>
 
           {/* Block 3: Full Description, Tags & Engineering Reviews (3rd on mobile, below Preview on desktop) */}
-          <div className="order-3 lg:col-span-2 space-y-6">
+          <div className="order-3 md:col-span-7 lg:col-span-8 space-y-6">
             <div className="bg-white border border-slate-200 rounded-xl p-5 sm:p-8 shadow-xs">
               <h2 className="text-lg font-bold text-slate-900 mb-3">Design Overview & Scope</h2>
               <p className="text-slate-700 text-sm sm:text-base leading-relaxed mb-6">
@@ -418,10 +542,10 @@ export function DesignDetail({
                   onClick={() => onSelectDesign(rd)}
                   className="text-left bg-white border border-slate-200 hover:border-slate-300 rounded-xl p-4 cursor-pointer transition-all shadow-xs hover:shadow-sm group"
                 >
-                  <div className="h-36 rounded-lg overflow-hidden mb-3 bg-slate-100 flex items-center justify-center">
+                  <div className="h-40 rounded-lg overflow-hidden mb-3 bg-white border border-slate-100 p-2 flex items-center justify-center">
                     <img
                       src={rd.previewUrl || FALLBACK_PREVIEW}
-                      alt={rd.title}
+                      alt={sanitizeDesignTitle(rd.title)}
                       referrerPolicy="no-referrer"
                       onError={(e) => {
                         const target = e.currentTarget;
@@ -429,14 +553,14 @@ export function DesignDetail({
                           target.src = FALLBACK_PREVIEW;
                         }
                       }}
-                      className="w-full h-full object-contain object-center"
+                      className="design-preview-image"
                     />
                   </div>
                   <div className="text-xs text-slate-500 font-mono">
                     <span className="text-blue-700 font-sans font-semibold">{rd.software}</span> · {rd.format}
                   </div>
                   <h4 className="text-sm font-bold text-slate-900 group-hover:text-blue-700 transition-colors line-clamp-1 mt-1">
-                    {rd.title}
+                    {sanitizeDesignTitle(rd.title)}
                   </h4>
                   <div className="flex items-center justify-between text-xs text-slate-500 mt-2 tabular-nums">
                     <span>{rd.fileSize}</span>

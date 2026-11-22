@@ -145,6 +145,7 @@ export default function App() {
       try {
         const res = await fetch(`/api/designs/${encodeURIComponent(designId)}`, {
           headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
+          cache: 'no-store',
         });
         if (res.ok) {
           const data: CADDesign = await res.json();
@@ -667,6 +668,10 @@ export default function App() {
       });
 
       if (res.ok) {
+        const savedDesign: CADDesign | null = await res.json().catch(() => null);
+        if (savedDesign && selectedDesign?.id === savedDesign.id) {
+          setSelectedDesign(savedDesign);
+        }
         showToast(designData.id ? 'CAD design updated successfully!' : 'New CAD design saved successfully!');
         await fetchData();
         setEditingDesign(null);
@@ -914,7 +919,11 @@ export default function App() {
   };
 
   const handleBatchUploadDesigns = async (
-    items: (Partial<CADDesign> & { fileDataBase64?: string; originalFilename?: string })[]
+    items: (Partial<CADDesign> & {
+      fileDataBase64?: string;
+      previewDataBase64?: string;
+      originalFilename?: string;
+    })[]
   ): Promise<boolean> => {
     try {
       const res = await fetch('/api/designs/batch', {
@@ -1090,6 +1099,10 @@ export default function App() {
             onOpenAuth={() => setAuthModalOpen(true)}
             onSubmitReview={handleSubmitReview}
             onDeleteReview={handleDeleteReview}
+            onEditDesign={(d) => {
+              setEditingDesign(d);
+              setUploadModalOpen(true);
+            }}
             allDesigns={allPublishedDesigns}
             onSelectDesign={openDesignDetail}
           />

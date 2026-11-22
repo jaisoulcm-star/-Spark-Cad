@@ -8,6 +8,7 @@ import {
   users,
 } from './schema.ts';
 import { ensureSeedUsers, SEED_USERS } from './users.ts';
+import { sanitizeDesignTitle } from '../utils/cadHelpers.ts';
 import type { CADDesign, Category, ContactMessage, DesignReview } from '../types.ts';
 
 export const SEED_CATEGORIES: Category[] = [
@@ -51,7 +52,7 @@ export const SEED_CATEGORIES: Category[] = [
 function mapRowToDesign(row: typeof designs.$inferSelect): CADDesign {
   return {
     id: row.id,
-    title: row.title,
+    title: sanitizeDesignTitle(row.title),
     description: row.description,
     category: row.category,
     software: row.software as CADDesign['software'],
