@@ -183,69 +183,96 @@ export default function App() {
     return () => window.removeEventListener('popstate', handlePopState);
   }, [loadDeepLinkedDesign]);
 
-  const fetchData = useCallback(async () => {
-    try {
-      const params = new URLSearchParams();
-      if (searchQuery) params.append('search', searchQuery);
-      if (selectedCategory !== 'All') params.append('category', selectedCategory);
-      if (selectedSoftware !== 'All') params.append('software', selectedSoftware);
-      if (selectedFormat !== 'All') params.append('format', selectedFormat);
-      if (selectedComplexity !== 'All') params.append('complexity', selectedComplexity);
-      if (sortBy) params.append('sort', sortBy);
-
-      const isAdmin = Boolean(authToken && currentUser?.role === 'admin');
-      const authHeaders: HeadersInit = authToken ? { Authorization: `Bearer ${authToken}` } : {};
-
-      const [designsRes, allPubRes, catRes, statsRes, adminRes, userRes, contactRes] = await Promise.all([
-        fetch(`/api/designs?${params.toString()}`, { cache: 'no-store' }),
-        fetch('/api/designs?sort=order', { cache: 'no-store' }),
-        fetch('/api/categories', { cache: 'no-store' }),
-        fetch('/api/stats', { cache: 'no-store' }),
-        isAdmin ? fetch('/api/designs?status=all&sort=order', { headers: authHeaders, cache: 'no-store' }) : Promise.resolve(null),
-        isAdmin ? fetch('/api/users', { headers: authHeaders, cache: 'no-store' }) : Promise.resolve(null),
-        isAdmin ? fetch('/api/contact', { headers: authHeaders, cache: 'no-store' }) : Promise.resolve(null),
-      ]);
-
-      let pubList: CADDesign[] = [];
-      let adminList: CADDesign[] = [];
-
-      if (designsRes.ok) {
-        setDesigns(await designsRes.json());
+  const safeFetchJson = useCallback(async <T,>(url: string, init?: RequestInit, retries = 1): Promise<T | null> => {
+    for (let attempt = 0; attempt <= retries; attempt++) {
+      try {
+        const res = await fetch(url, { credentials: 'include', ...init });
+        if (!res.ok) return null;
+        return (await res.json()) as T;
+      } catch {
+        if (attempt < retries) {
+          await new Promise((r) => window.setTimeout(r, 400));
+        }
       }
-      if (allPubRes.ok) {
-        pubList = await allPubRes.json();
-        setAllPublishedDesigns(pubList);
-      }
-      if (catRes.ok) setCategories(await catRes.json());
-      if (statsRes.ok) setStats(await statsRes.json());
-
-      if (adminRes && adminRes.ok) {
-        adminList = await adminRes.json();
-        setAdminDesigns(adminList);
-      } else if (!isAdmin) {
-        setAdminDesigns([]);
-      }
-
-      if (userRes && userRes.ok) {
-        setUsers(await userRes.json());
-      } else if (!isAdmin) {
-        setUsers([]);
-      }
-
-      if (contactRes && contactRes.ok) {
-        setInquiries(await contactRes.json());
-      } else if (!isAdmin) {
-        setInquiries([]);
-      }
-
-      setSelectedDesign((prev) => {
-        if (!prev) return null;
-        return adminList.find((d) => d.id === prev.id) || pubList.find((d) => d.id === prev.id) || prev;
-      });
-    } catch (err) {
-      console.error('Error fetching data:', err);
     }
-  }, [searchQuery, selectedCategory, selectedSoftware, selectedFormat, selectedComplexity, sortBy, authToken, currentUser?.role]);
+    return null;
+  }, []);
+
+  const fetchData = useCallback(async () => {
+    const params = new URLSearchParams();
+    if (searchQuery) params.append('search', searchQuery);
+    if (selectedCategory !== 'All') params.append('category', selectedCategory);
+    if (selectedSoftware !== 'All') params.append('software', selectedSoftware);
+    if (selectedFormat !== 'All') params.append('format', selectedFormat);
+    if (selectedComplexity !== 'All') params.append('complexity', selectedComplexity);
+    if (sortBy) params.append('sort', sortBy);
+
+    const isAdmin = Boolean(authToken && currentUser?.role === 'admin');
+    const authHeaders: HeadersInit = authToken ? { Authorization: `Bearer ${authToken}` } : {};
+
+    const [designsData, allPubData, catData, statsData, adminData, userData, contactData] = await Promise.all([
+      safeFetchJson<CADDesign[]>(`/api/designs?${params.toString()}`, { cache: 'no-store' }),
+      safeFetchJson<CADDesign[]>('/api/designs?sort=order', { cache: 'no-store' }),
+      safeFetchJson<Category[]>('/api/categories', { cache: 'no-store' }),
+      safeFetchJson<PlatformStats>('/api/stats', { cache: 'no-store' }),
+      isAdmin
+        ? safeFetchJson<CADDesign[]>('/api/designs?status=all&sort=order', { headers: authHeaders, cache: 'no-store' })
+        : Promise.resolve(null),
+      isAdmin
+        ? safeFetchJson<User[]>('/api/users', { headers: authHeaders, cache: 'no-store' })
+        : Promise.resolve(null),
+      isAdmin
+        ? safeFetchJson<ContactMessage[]>('/api/contact', { headers: authHeaders, cache: 'no-store' })
+        : Promise.resolve(null),
+    ]);
+
+    let pubList: CADDesign[] = [];
+    let adminList: CADDesign[] = [];
+
+    if (Array.isArray(designsData)) {
+      setDesigns(designsData);
+    }
+    if (Array.isArray(allPubData)) {
+      pubList = allPubData;
+      setAllPublishedDesigns(pubList);
+    }
+    if (Array.isArray(catData)) setCategories(catData);
+    if (statsData) setStats(statsData);
+
+    if (Array.isArray(adminData)) {
+      adminList = adminData;
+      setAdminDesigns(adminList);
+    } else if (!isAdmin) {
+      setAdminDesigns([]);
+    }
+
+    if (Array.isArray(userData)) {
+      setUsers(userData);
+    } else if (!isAdmin) {
+      setUsers([]);
+    }
+
+    if (Array.isArray(contactData)) {
+      setInquiries(contactData);
+    } else if (!isAdmin) {
+      setInquiries([]);
+    }
+
+    setSelectedDesign((prev) => {
+      if (!prev) return null;
+      return adminList.find((d) => d.id === prev.id) || pubList.find((d) => d.id === prev.id) || prev;
+    });
+  }, [
+    searchQuery,
+    selectedCategory,
+    selectedSoftware,
+    selectedFormat,
+    selectedComplexity,
+    sortBy,
+    authToken,
+    currentUser?.role,
+    safeFetchJson,
+  ]);
 
   useEffect(() => {
     fetchData();
@@ -443,6 +470,7 @@ export default function App() {
       const res = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ email, password: pass })
       });
       let data: any = {};
@@ -478,6 +506,7 @@ export default function App() {
       const res = await fetch('/api/auth/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ name, email, password })
       });
       let data: any = {};
@@ -487,9 +516,10 @@ export default function App() {
       if (res.ok && data.success) {
         setAuthToken(data.token || null);
         setCurrentUser(data.user);
+        const nextView = data.user.role === 'admin' ? 'admin' : 'library';
         if (!selectedDesign) {
-          setCurrentView('library');
-          syncUrl('library', null);
+          setCurrentView(nextView);
+          syncUrl(nextView, null);
         }
         showToast('Account created successfully. Welcome to Spark Cat!');
         return { success: true };
@@ -509,6 +539,7 @@ export default function App() {
       const res = await fetch('/api/auth/setup-admin', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ email, password }),
       });
       let data: any = {};
@@ -537,6 +568,7 @@ export default function App() {
       const idToken = await credential.user.getIdToken();
       const res = await fetch('/api/auth/me', {
         headers: { Authorization: `Bearer ${idToken}` },
+        credentials: 'include',
         cache: 'no-store',
       });
       const data = await res.json().catch(() => ({}));
@@ -556,10 +588,35 @@ export default function App() {
       if (err?.code === 'auth/popup-closed-by-user') {
         return { success: false, error: 'Google sign-in popup was closed.' };
       }
+      if (err?.code === 'auth/popup-blocked') {
+        return { success: false, error: 'Popup blocked by browser. Please use Email & Password or Demo Sign-In below.' };
+      }
+      if (err?.code === 'auth/unauthorized-domain') {
+        return { success: false, error: 'Domain not authorized for Google popup. Please sign in with Email & Password or Demo Admin below.' };
+      }
       console.error('Google Sign-In error:', err);
-      return { success: false, error: 'Unable to complete Google sign-in.' };
+      return { success: false, error: 'Unable to complete Google sign-in. You can sign in using Email & Password below.' };
     }
   }, [selectedDesign, showToast, syncUrl]);
+
+  // Restore active session from HttpOnly cookie on initial page load
+  useEffect(() => {
+    let active = true;
+    fetch('/api/auth/me', {
+      credentials: 'include',
+      cache: 'no-store',
+    })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (!active || !data?.success || !data?.user) return;
+        setAuthToken((prev) => prev || data.token || null);
+        setCurrentUser((prev) => prev || data.user);
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, []);
 
   useEffect(() => {
     const unsubscribe = onIdTokenChanged(auth, async (fbUser) => {
@@ -568,6 +625,7 @@ export default function App() {
         const idToken = await fbUser.getIdToken();
         const res = await fetch('/api/auth/me', {
           headers: { Authorization: `Bearer ${idToken}` },
+          credentials: 'include',
           cache: 'no-store',
         });
         const data = await res.json().catch(() => ({}));
@@ -583,6 +641,7 @@ export default function App() {
   }, []);
 
   const handleLogout = () => {
+    fetch('/api/auth/logout', { method: 'POST', credentials: 'include' }).catch(() => {});
     signOut(auth).catch(() => {});
     setAuthToken(null);
     setCurrentUser(null);

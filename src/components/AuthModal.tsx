@@ -232,15 +232,27 @@ export function AuthModal({ isOpen, onClose, onLogin, onRegister, onGoogleLogin 
             </button>
           )}
           <div>
-            <p className="text-xs text-slate-500 text-center mb-2">Quick demo engineer preview:</p>
-            <button
-              type="button"
-              onClick={() => handleDemoLogin('alex@engineering.io')}
-              className="w-full min-h-[44px] bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-800 font-semibold text-xs py-2.5 px-3 rounded-lg transition-colors flex items-center justify-center gap-1.5"
-            >
-              <UserIcon className="w-3.5 h-3.5 text-slate-500" />
-              <span>Demo Engineer</span>
-            </button>
+            <p className="text-xs text-slate-500 text-center mb-2">Quick demo sign-in:</p>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                disabled={loading}
+                onClick={() => handleDemoLogin('admin@sparkcat.hub')}
+                className="min-h-[44px] bg-blue-50 hover:bg-blue-100 border border-blue-200 text-blue-900 font-semibold text-xs py-2.5 px-3 rounded-lg transition-colors flex items-center justify-center gap-1.5 disabled:opacity-60"
+              >
+                <Lock className="w-3.5 h-3.5 text-blue-700" />
+                <span>Demo Admin</span>
+              </button>
+              <button
+                type="button"
+                disabled={loading}
+                onClick={() => handleDemoLogin('alex@engineering.io')}
+                className="min-h-[44px] bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-800 font-semibold text-xs py-2.5 px-3 rounded-lg transition-colors flex items-center justify-center gap-1.5 disabled:opacity-60"
+              >
+                <UserIcon className="w-3.5 h-3.5 text-slate-500" />
+                <span>Demo Engineer</span>
+              </button>
+            </div>
           </div>
         </div>
       </div>

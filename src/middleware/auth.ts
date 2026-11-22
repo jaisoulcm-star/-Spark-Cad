@@ -14,11 +14,59 @@ export interface AuthRequest extends Request {
   authUser?: StoredDbUser;
 }
 
+export const SESSION_COOKIE_NAME = 'sparkcat_session';
+
+export function extractCookieToken(req: Request): string | null {
+  const rawCookie = req.headers.cookie;
+  if (!rawCookie || typeof rawCookie !== 'string') return null;
+  const parts = rawCookie.split(';');
+  for (const part of parts) {
+    const [k, ...rest] = part.trim().split('=');
+    if (k === SESSION_COOKIE_NAME) {
+      const val = rest.join('=').trim();
+      if (val) {
+        try {
+          return decodeURIComponent(val);
+        } catch {
+          return val;
+        }
+      }
+    }
+  }
+  return null;
+}
+
 export function extractBearerToken(req: Request): string | null {
   const authHeader = req.headers.authorization;
-  if (!authHeader || typeof authHeader !== 'string') return null;
-  if (!authHeader.startsWith('Bearer ')) return null;
-  return authHeader.slice(7).trim() || null;
+  if (authHeader && typeof authHeader === 'string' && authHeader.startsWith('Bearer ')) {
+    const bearer = authHeader.slice(7).trim();
+    if (bearer) return bearer;
+  }
+  return extractCookieToken(req);
+}
+
+export function setSessionCookie(req: Request, res: Response, token: string): void {
+  const isSecure =
+    req.secure ||
+    req.headers['x-forwarded-proto'] === 'https' ||
+    process.env.NODE_ENV === 'production';
+  const sameSite = isSecure ? 'None; Secure' : 'Lax';
+  res.setHeader(
+    'Set-Cookie',
+    `${SESSION_COOKIE_NAME}=${encodeURIComponent(token)}; Path=/; HttpOnly; Max-Age=${7 * 24 * 60 * 60}; SameSite=${sameSite}`
+  );
+}
+
+export function clearSessionCookie(req: Request, res: Response): void {
+  const isSecure =
+    req.secure ||
+    req.headers['x-forwarded-proto'] === 'https' ||
+    process.env.NODE_ENV === 'production';
+  const sameSite = isSecure ? 'None; Secure' : 'Lax';
+  res.setHeader(
+    'Set-Cookie',
+    `${SESSION_COOKIE_NAME}=; Path=/; HttpOnly; Max-Age=0; SameSite=${sameSite}`
+  );
 }
 
 export async function resolveAuthenticatedUser(req: AuthRequest): Promise<StoredDbUser | null> {

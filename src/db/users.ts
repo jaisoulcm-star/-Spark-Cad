@@ -8,8 +8,21 @@ export interface StoredDbUser extends User {
 }
 
 const DEFAULT_ADMIN_EMAIL = (process.env.ADMIN_EMAIL || 'admin@sparkcat.hub').trim();
-const DEFAULT_ADMIN_HASH =
+export const DEFAULT_ADMIN_HASH =
   'a99cd4e8aef01ede98362a93eb648b3e:646be82c12e4282956588395f2530b684622824141151eb9bff6242700ada689767a4c39ceda18823543c4735c402b5b74150ed5113cdcb3cc1a7f2316ec1f7c';
+
+export function isKnownAdminEmail(email: string): boolean {
+  const normalized = (email || '').trim().toLowerCase();
+  if (!normalized) return false;
+  return (
+    normalized === DEFAULT_ADMIN_EMAIL.toLowerCase() ||
+    normalized === 'venimurugesh@gmail.com' ||
+    normalized === 'vinaygasundaram2007@gmail.com' ||
+    normalized === 'admin@sparkcat.hub' ||
+    normalized === 'admin@sparkcat.com' ||
+    normalized === 'admin@sparkcat.io'
+  );
+}
 
 export const SEED_USERS: StoredDbUser[] = [
   {
@@ -97,11 +110,7 @@ export async function getOrCreateUser(
 ): Promise<StoredDbUser> {
   try {
     await ensureSeedUsers();
-    const normalizedEmail = (email || '').trim().toLowerCase();
-    const isAutoAdmin =
-      normalizedEmail === DEFAULT_ADMIN_EMAIL.toLowerCase() ||
-      normalizedEmail === 'venimurugesh@gmail.com' ||
-      normalizedEmail === 'vinaygasundaram2007@gmail.com';
+    const isAutoAdmin = isKnownAdminEmail(email);
     const fallbackName =
       (displayName && displayName.trim()) ||
       (email ? email.split('@')[0] : 'Spark Cat Engineer');
@@ -177,11 +186,8 @@ export async function getUserByEmail(email: string): Promise<StoredDbUser | null
     const rows = await db.select().from(users);
     const match = rows.find((r) => r.email.toLowerCase() === normalized);
     if (match) return mapRowToUser(match);
-    // Also allow matching the seeded admin account if logging in with configured admin email
-    if (
-      normalized === 'vinaygasundaram2007@gmail.com' ||
-      normalized === DEFAULT_ADMIN_EMAIL.toLowerCase()
-    ) {
+    // Also allow matching the seeded admin account if logging in with any recognized admin email
+    if (isKnownAdminEmail(normalized)) {
       const adminRow = rows.find((r) => r.uid === 'usr-admin' || r.role === 'admin');
       if (adminRow) return mapRowToUser(adminRow);
     }
