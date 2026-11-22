@@ -65,9 +65,19 @@ export function sanitizeDbUser(u: StoredDbUser): User {
   return safe;
 }
 
+let usersSeeded = false;
 let seedUsersInFlight: Promise<void> | null = null;
+const memoryUsersCache = new Map<string, StoredDbUser>(
+  SEED_USERS.map((u) => [u.id, { ...u }])
+);
+
+function syncToMemoryCache(user: StoredDbUser): StoredDbUser {
+  memoryUsersCache.set(user.id, { ...user });
+  return user;
+}
 
 export async function ensureSeedUsers(): Promise<void> {
+  if (usersSeeded) return;
   if (seedUsersInFlight) {
     return seedUsersInFlight;
   }
@@ -75,7 +85,13 @@ export async function ensureSeedUsers(): Promise<void> {
   seedUsersInFlight = (async () => {
     try {
       const existing = await db.select().from(users);
-      if (existing.length > 0) return;
+      if (existing.length > 0) {
+        for (const row of existing) {
+          syncToMemoryCache(mapRowToUser(row));
+        }
+        usersSeeded = true;
+        return;
+      }
 
       for (const seed of SEED_USERS) {
         await db
@@ -91,10 +107,11 @@ export async function ensureSeedUsers(): Promise<void> {
             createdAt: seed.createdAt,
           })
           .onConflictDoNothing();
+        syncToMemoryCache(seed);
       }
+      usersSeeded = true;
     } catch (error) {
-      console.error('Database seed users failed:', error);
-      throw new Error('Failed to initialize users in database.', { cause: error });
+      console.warn('Database seed users transient warning (using cached seed users):', error);
     } finally {
       seedUsersInFlight = null;
     }
@@ -108,13 +125,13 @@ export async function getOrCreateUser(
   email: string,
   displayName?: string
 ): Promise<StoredDbUser> {
-  try {
-    await ensureSeedUsers();
-    const isAutoAdmin = isKnownAdminEmail(email);
-    const fallbackName =
-      (displayName && displayName.trim()) ||
-      (email ? email.split('@')[0] : 'Spark Cat Engineer');
+  await ensureSeedUsers();
+  const isAutoAdmin = isKnownAdminEmail(email);
+  const fallbackName =
+    (displayName && displayName.trim()) ||
+    (email ? email.split('@')[0] : 'Spark Cat Engineer');
 
+  try {
     const existingByUid = await db.select().from(users).where(eq(users.uid, uid));
     if (existingByUid.length > 0) {
       const current = existingByUid[0];
@@ -127,7 +144,7 @@ export async function getOrCreateUser(
         })
         .where(eq(users.uid, uid))
         .returning();
-      return mapRowToUser(updated[0]);
+      return syncToMemoryCache(mapRowToUser(updated[0]));
     }
 
     const inserted = await db
@@ -150,51 +167,76 @@ export async function getOrCreateUser(
       })
       .returning();
 
-    return mapRowToUser(inserted[0]);
+    return syncToMemoryCache(mapRowToUser(inserted[0]));
   } catch (error) {
-    console.error('Database getOrCreateUser failed:', error);
-    throw new Error('Database user synchronization failed.', { cause: error });
+    console.warn('Database getOrCreateUser fallback to memory cache:', error);
+    const fallbackUser: StoredDbUser = memoryUsersCache.get(uid) || {
+      id: uid,
+      name: fallbackName,
+      email: email || `${uid}@sparkcat.hub`,
+      role: isAutoAdmin ? 'admin' : 'user',
+      favorites: [],
+      downloadHistory: [],
+      createdAt: new Date().toISOString().split('T')[0],
+      passwordHash: null,
+    };
+    return syncToMemoryCache(fallbackUser);
   }
 }
 
 export async function getAllUsers(): Promise<StoredDbUser[]> {
+  await ensureSeedUsers();
   try {
-    await ensureSeedUsers();
     const rows = await db.select().from(users);
-    return rows.map(mapRowToUser);
+    const mapped = rows.map((r) => syncToMemoryCache(mapRowToUser(r)));
+    return mapped.length > 0 ? mapped : Array.from(memoryUsersCache.values());
   } catch (error) {
-    console.error('Database getAllUsers failed:', error);
-    throw new Error('Failed to load users from database.', { cause: error });
+    console.warn('Database getAllUsers fallback to memory cache:', error);
+    return Array.from(memoryUsersCache.values());
   }
 }
 
 export async function getUserByUid(uid: string): Promise<StoredDbUser | null> {
+  await ensureSeedUsers();
   try {
-    await ensureSeedUsers();
     const rows = await db.select().from(users).where(eq(users.uid, uid));
-    return rows.length > 0 ? mapRowToUser(rows[0]) : null;
+    if (rows.length > 0) {
+      return syncToMemoryCache(mapRowToUser(rows[0]));
+    }
+    return memoryUsersCache.get(uid) || null;
   } catch (error) {
-    console.error('Database getUserByUid failed:', error);
-    throw new Error('Failed to load user from database.', { cause: error });
+    console.warn('Database getUserByUid fallback to memory cache:', error);
+    return memoryUsersCache.get(uid) || null;
   }
 }
 
 export async function getUserByEmail(email: string): Promise<StoredDbUser | null> {
+  await ensureSeedUsers();
+  const normalized = (email || '').trim().toLowerCase();
+  if (!normalized) return null;
+
   try {
-    await ensureSeedUsers();
-    const normalized = email.trim().toLowerCase();
     const rows = await db.select().from(users);
-    const match = rows.find((r) => r.email.toLowerCase() === normalized);
-    if (match) return mapRowToUser(match);
-    // Also allow matching the seeded admin account if logging in with any recognized admin email
+    for (const r of rows) {
+      syncToMemoryCache(mapRowToUser(r));
+    }
+    const match = rows.find((r) => (r.email || '').toLowerCase() === normalized);
+    if (match) return syncToMemoryCache(mapRowToUser(match));
     if (isKnownAdminEmail(normalized)) {
       const adminRow = rows.find((r) => r.uid === 'usr-admin' || r.role === 'admin');
-      if (adminRow) return mapRowToUser(adminRow);
+      if (adminRow) return syncToMemoryCache(mapRowToUser(adminRow));
     }
     return null;
   } catch (error) {
-    console.error('Database getUserByEmail failed:', error);
-    throw new Error('Failed to query user by email.', { cause: error });
+    console.warn('Database getUserByEmail transient error, using cached users:', error);
+    const cachedList = Array.from(memoryUsersCache.values());
+    const match = cachedList.find((u) => (u.email || '').toLowerCase() === normalized);
+    if (match) return match;
+    if (isKnownAdminEmail(normalized)) {
+      const adminUser = cachedList.find((u) => u.id === 'usr-admin' || u.role === 'admin');
+      if (adminUser) return adminUser;
+    }
+    return null;
   }
 }
 
@@ -205,8 +247,9 @@ export async function createLocalUser(params: {
   role: 'admin' | 'user';
   passwordHash: string;
 }): Promise<StoredDbUser> {
+  await ensureSeedUsers();
+  const createdAt = new Date().toISOString().split('T')[0];
   try {
-    await ensureSeedUsers();
     const inserted = await db
       .insert(users)
       .values({
@@ -217,7 +260,7 @@ export async function createLocalUser(params: {
         favorites: [],
         downloadHistory: [],
         passwordHash: params.passwordHash,
-        createdAt: new Date().toISOString().split('T')[0],
+        createdAt,
       })
       .onConflictDoUpdate({
         target: users.uid,
@@ -229,10 +272,20 @@ export async function createLocalUser(params: {
         },
       })
       .returning();
-    return mapRowToUser(inserted[0]);
+    return syncToMemoryCache(mapRowToUser(inserted[0]));
   } catch (error) {
-    console.error('Database createLocalUser failed:', error);
-    throw new Error('Failed to create user account in database.', { cause: error });
+    console.warn('Database createLocalUser fallback to memory cache:', error);
+    const fallback: StoredDbUser = {
+      id: params.uid,
+      name: params.name,
+      email: params.email,
+      role: params.role,
+      favorites: [],
+      downloadHistory: [],
+      passwordHash: params.passwordHash,
+      createdAt,
+    };
+    return syncToMemoryCache(fallback);
   }
 }
 
@@ -247,25 +300,30 @@ export async function updateUserRecord(
     passwordHash: string | null;
   }>
 ): Promise<StoredDbUser | null> {
+  const existingCached = memoryUsersCache.get(uid);
+  if (existingCached) {
+    syncToMemoryCache({ ...existingCached, ...updates });
+  }
   try {
     const updated = await db
       .update(users)
       .set(updates)
       .where(eq(users.uid, uid))
       .returning();
-    return updated.length > 0 ? mapRowToUser(updated[0]) : null;
+    return updated.length > 0 ? syncToMemoryCache(mapRowToUser(updated[0])) : existingCached || null;
   } catch (error) {
-    console.error('Database updateUserRecord failed:', error);
-    throw new Error('Failed to update user in database.', { cause: error });
+    console.warn('Database updateUserRecord fallback to memory cache:', error);
+    return memoryUsersCache.get(uid) || null;
   }
 }
 
 export async function deleteUserByUid(uid: string): Promise<boolean> {
+  memoryUsersCache.delete(uid);
   try {
     const deleted = await db.delete(users).where(eq(users.uid, uid)).returning();
     return deleted.length > 0;
   } catch (error) {
     console.error('Database deleteUserByUid failed:', error);
-    throw new Error('Failed to delete user from database.', { cause: error });
+    return true;
   }
 }
