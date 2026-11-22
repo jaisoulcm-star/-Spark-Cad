@@ -388,11 +388,11 @@ export function UploadModal({
               Preview Image (Upload or URL)
             </label>
             <div className="flex flex-col sm:flex-row gap-2.5 items-stretch sm:items-center">
-              <div className="w-16 h-12 rounded-lg overflow-hidden border border-slate-200 bg-slate-100 shrink-0">
+              <div className="w-16 h-12 rounded-lg overflow-hidden border border-slate-200 bg-slate-100 shrink-0 flex items-center justify-center">
                 <img
                   src={previewDataBase64 || previewUrl || DEFAULT_PREVIEW_URL}
                   alt="Preview thumbnail"
-                  className="w-full h-full object-cover"
+                  className="w-full h-full object-contain object-center"
                 />
               </div>
               <input

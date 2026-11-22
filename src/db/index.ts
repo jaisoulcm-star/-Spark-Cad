@@ -8,18 +8,42 @@ declare global {
 
 export const createPool = () => {
   if (!global._postgresPool) {
-    global._postgresPool = new Pool({
+    const rawPool = new Pool({
       host: process.env.SQL_HOST,
       user: process.env.SQL_USER,
       password: process.env.SQL_PASSWORD,
       database: process.env.SQL_DB_NAME,
       max: 10,
-      connectionTimeoutMillis: 15000,
+      idleTimeoutMillis: 10000,
+      connectionTimeoutMillis: 20000,
+      keepAlive: true,
+      keepAliveInitialDelayMillis: 10000,
     });
 
-    global._postgresPool.on('error', (err) => {
-      console.error('Unexpected error on idle SQL pool client:', err);
+    rawPool.on('error', (err) => {
+      console.warn('Idle SQL pool client disconnected (will reconnect on next query):', err.message);
     });
+
+    const origQuery = rawPool.query.bind(rawPool);
+    (rawPool as any).query = async (...args: any[]) => {
+      try {
+        return await (origQuery as any)(...args);
+      } catch (err: any) {
+        const msg = String(err?.message || '');
+        if (
+          typeof args[args.length - 1] !== 'function' &&
+          (msg.includes('Connection terminated') ||
+            msg.includes('terminated unexpectedly') ||
+            msg.includes('ECONNRESET') ||
+            msg.includes('Client has encountered a connection error'))
+        ) {
+          return await (origQuery as any)(...args);
+        }
+        throw err;
+      }
+    };
+
+    global._postgresPool = rawPool;
   }
   return global._postgresPool;
 };

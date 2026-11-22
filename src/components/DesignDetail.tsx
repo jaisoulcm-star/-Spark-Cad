@@ -107,7 +107,7 @@ export function DesignDetail({
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 lg:gap-8 items-start">
           {/* Block 1: Main Preview Image */}
           <div className="order-1 lg:col-span-2 bg-white border border-slate-200 rounded-xl overflow-hidden shadow-xs relative">
-            <div className="relative h-[240px] sm:h-[380px] lg:h-[440px] w-full bg-slate-100">
+            <div className="relative h-[240px] sm:h-[380px] lg:h-[440px] w-full bg-slate-100 flex items-center justify-center">
               <img
                 src={design.previewUrl || FALLBACK_PREVIEW}
                 alt={design.title}
@@ -118,7 +118,7 @@ export function DesignDetail({
                     target.src = FALLBACK_PREVIEW;
                   }
                 }}
-                className="w-full h-full object-cover"
+                className="w-full h-full object-contain object-center"
               />
 
               <div className="absolute top-3 right-3 sm:top-4 sm:right-4 flex items-center gap-2">
@@ -418,7 +418,7 @@ export function DesignDetail({
                   onClick={() => onSelectDesign(rd)}
                   className="text-left bg-white border border-slate-200 hover:border-slate-300 rounded-xl p-4 cursor-pointer transition-all shadow-xs hover:shadow-sm group"
                 >
-                  <div className="h-36 rounded-lg overflow-hidden mb-3 bg-slate-100">
+                  <div className="h-36 rounded-lg overflow-hidden mb-3 bg-slate-100 flex items-center justify-center">
                     <img
                       src={rd.previewUrl || FALLBACK_PREVIEW}
                       alt={rd.title}
@@ -429,7 +429,7 @@ export function DesignDetail({
                           target.src = FALLBACK_PREVIEW;
                         }
                       }}
-                      className="w-full h-full object-cover group-hover:scale-[1.03] transition-transform"
+                      className="w-full h-full object-contain object-center"
                     />
                   </div>
                   <div className="text-xs text-slate-500 font-mono">

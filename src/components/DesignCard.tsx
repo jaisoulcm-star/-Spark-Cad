@@ -26,7 +26,7 @@ export function DesignCard({
           type="button"
           onClick={() => onSelect(design)}
           aria-label={`Open ${design.title}`}
-          className="w-full h-full block text-left"
+          className="w-full h-full flex items-center justify-center text-left"
         >
           <img
             src={design.previewUrl || FALLBACK_PREVIEW}
@@ -38,7 +38,7 @@ export function DesignCard({
                 target.src = FALLBACK_PREVIEW;
               }
             }}
-            className="w-full h-full object-cover group-hover:scale-[1.03] transition-transform duration-300"
+            className="w-full h-full object-contain object-center"
           />
         </button>
 

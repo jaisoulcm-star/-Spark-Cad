@@ -204,7 +204,7 @@ export function UserDashboard({
                             target.src = FALLBACK_PREVIEW;
                           }
                         }}
-                        className="w-20 h-20 rounded-lg object-cover border border-slate-200"
+                        className="w-20 h-20 rounded-lg object-contain object-center bg-slate-100 border border-slate-200"
                       />
                     </button>
                     <div className="flex-1 min-w-0">
@@ -280,7 +280,7 @@ export function UserDashboard({
                               target.src = FALLBACK_PREVIEW;
                             }
                           }}
-                          className="w-14 h-14 rounded-lg object-cover border border-slate-200 shrink-0"
+                          className="w-14 h-14 rounded-lg object-contain object-center bg-slate-100 border border-slate-200 shrink-0"
                         />
                         <div className="min-w-0">
                           <h4 className="text-sm font-bold text-slate-900 truncate">

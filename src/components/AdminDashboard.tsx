@@ -634,7 +634,7 @@ export function AdminDashboard({
                               target.src = FALLBACK_PREVIEW;
                             }
                           }}
-                          className="w-12 h-12 rounded-lg object-cover border border-slate-200 shrink-0"
+                          className="w-12 h-12 rounded-lg object-contain object-center bg-slate-100 border border-slate-200 shrink-0"
                         />
                         <div className="min-w-0">
                           <div className="font-bold text-slate-900 text-sm truncate">{design.title}</div>
