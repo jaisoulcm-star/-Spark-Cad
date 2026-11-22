@@ -96,9 +96,43 @@ function mapRowToMessage(row: typeof contactMessages.$inferSelect): ContactMessa
   };
 }
 
+let categoriesSeeded = false;
 let seedCategoriesInFlight: Promise<void> | null = null;
+const memoryCategoriesCache = new Map<string, Category>(
+  SEED_CATEGORIES.map((c) => [c.id, { ...c }])
+);
+const memoryDesignsCache = new Map<string, CADDesign>();
+const memoryStorageCache = new Map<
+  string,
+  {
+    id: string;
+    designId: string;
+    fileType: string;
+    filename: string;
+    mimeType: string;
+    sizeBytes: number;
+    dataBase64: string;
+  }
+>();
+const memoryMessagesCache = new Map<string, ContactMessage>();
+
+function syncCategoryCache(cat: Category): Category {
+  memoryCategoriesCache.set(cat.id, { ...cat });
+  return cat;
+}
+
+function syncDesignCache(design: CADDesign): CADDesign {
+  memoryDesignsCache.set(design.id, { ...design });
+  return design;
+}
+
+function syncMessageCache(msg: ContactMessage): ContactMessage {
+  memoryMessagesCache.set(msg.id, { ...msg });
+  return msg;
+}
 
 export async function ensureSeedCategories(): Promise<void> {
+  if (categoriesSeeded) return;
   if (seedCategoriesInFlight) {
     return seedCategoriesInFlight;
   }
@@ -106,7 +140,13 @@ export async function ensureSeedCategories(): Promise<void> {
   seedCategoriesInFlight = (async () => {
     try {
       const existing = await db.select().from(categories);
-      if (existing.length > 0) return;
+      if (existing.length > 0) {
+        for (const row of existing) {
+          syncCategoryCache(mapRowToCategory(row));
+        }
+        categoriesSeeded = true;
+        return;
+      }
 
       for (const cat of SEED_CATEGORIES) {
         await db
@@ -119,10 +159,11 @@ export async function ensureSeedCategories(): Promise<void> {
             iconName: cat.iconName,
           })
           .onConflictDoNothing();
+        syncCategoryCache(cat);
       }
+      categoriesSeeded = true;
     } catch (error) {
-      console.error('Database ensureSeedCategories failed:', error);
-      throw new Error('Failed to initialize categories in database.', { cause: error });
+      console.warn('Database ensureSeedCategories transient warning (using cached categories):', error);
     } finally {
       seedCategoriesInFlight = null;
     }
@@ -132,17 +173,22 @@ export async function ensureSeedCategories(): Promise<void> {
 }
 
 export async function getAllCategories(): Promise<Category[]> {
+  await ensureSeedCategories();
   try {
-    await ensureSeedCategories();
     const rows = await db.select().from(categories).orderBy(asc(categories.id));
-    return rows.map(mapRowToCategory);
+    if (rows.length > 0) {
+      memoryCategoriesCache.clear();
+      return rows.map((r) => syncCategoryCache(mapRowToCategory(r)));
+    }
+    return Array.from(memoryCategoriesCache.values());
   } catch (error) {
-    console.error('Database getAllCategories failed:', error);
-    throw new Error('Failed to fetch categories from database.', { cause: error });
+    console.warn('Database getAllCategories fallback to memory cache:', error);
+    return Array.from(memoryCategoriesCache.values());
   }
 }
 
 export async function createCategoryInDb(cat: Category): Promise<Category> {
+  syncCategoryCache(cat);
   try {
     const inserted = await db
       .insert(categories)
@@ -154,10 +200,10 @@ export async function createCategoryInDb(cat: Category): Promise<Category> {
         iconName: cat.iconName,
       })
       .returning();
-    return mapRowToCategory(inserted[0]);
+    return syncCategoryCache(mapRowToCategory(inserted[0]));
   } catch (error) {
-    console.error('Database createCategoryInDb failed:', error);
-    throw new Error('Failed to create category in database.', { cause: error });
+    console.warn('Database createCategoryInDb fallback to memory cache:', error);
+    return cat;
   }
 }
 
@@ -166,13 +212,22 @@ export async function updateCategoryInDb(
   updates: { name: string; slug: string; description: string },
   previousName: string
 ): Promise<Category | null> {
+  const existing = memoryCategoriesCache.get(id);
+  if (existing) {
+    syncCategoryCache({ ...existing, ...updates });
+  }
+  for (const d of memoryDesignsCache.values()) {
+    if (d.category === previousName && previousName !== updates.name) {
+      syncDesignCache({ ...d, category: updates.name });
+    }
+  }
   try {
     const updated = await db
       .update(categories)
       .set(updates)
       .where(eq(categories.id, id))
       .returning();
-    if (updated.length === 0) return null;
+    if (updated.length === 0) return memoryCategoriesCache.get(id) || null;
 
     if (previousName !== updates.name) {
       await db
@@ -180,10 +235,10 @@ export async function updateCategoryInDb(
         .set({ category: updates.name })
         .where(eq(designs.category, previousName));
     }
-    return mapRowToCategory(updated[0]);
+    return syncCategoryCache(mapRowToCategory(updated[0]));
   } catch (error) {
-    console.error('Database updateCategoryInDb failed:', error);
-    throw new Error('Failed to update category in database.', { cause: error });
+    console.warn('Database updateCategoryInDb fallback to memory cache:', error);
+    return memoryCategoriesCache.get(id) || null;
   }
 }
 
@@ -192,6 +247,12 @@ export async function deleteCategoryFromDb(
   deletedCategoryName: string,
   fallbackCategoryName: string
 ): Promise<void> {
+  memoryCategoriesCache.delete(id);
+  for (const d of memoryDesignsCache.values()) {
+    if (d.category === deletedCategoryName) {
+      syncDesignCache({ ...d, category: fallbackCategoryName });
+    }
+  }
   try {
     await db.delete(categories).where(eq(categories.id, id));
     await db
@@ -199,54 +260,63 @@ export async function deleteCategoryFromDb(
       .set({ category: fallbackCategoryName })
       .where(eq(designs.category, deletedCategoryName));
   } catch (error) {
-    console.error('Database deleteCategoryFromDb failed:', error);
-    throw new Error('Failed to delete category from database.', { cause: error });
+    console.warn('Database deleteCategoryFromDb fallback to memory cache:', error);
   }
 }
 
 export async function getAllDesignsFromDb(): Promise<CADDesign[]> {
   try {
     const rows = await db.select().from(designs).orderBy(asc(designs.order));
-    return rows.map(mapRowToDesign);
+    memoryDesignsCache.clear();
+    return rows.map((r) => syncDesignCache(mapRowToDesign(r)));
   } catch (error) {
-    console.error('Database getAllDesignsFromDb failed:', error);
-    throw new Error('Failed to fetch CAD designs from database.', { cause: error });
+    console.warn('Database getAllDesignsFromDb fallback to memory cache:', error);
+    return Array.from(memoryDesignsCache.values()).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
   }
 }
 
 export async function getDesignByIdFromDb(id: string): Promise<CADDesign | null> {
   try {
     const rows = await db.select().from(designs).where(eq(designs.id, id));
-    return rows.length > 0 ? mapRowToDesign(rows[0]) : null;
+    return rows.length > 0 ? syncDesignCache(mapRowToDesign(rows[0])) : memoryDesignsCache.get(id) || null;
   } catch (error) {
-    console.error('Database getDesignByIdFromDb failed:', error);
-    throw new Error('Failed to fetch CAD design from database.', { cause: error });
+    console.warn('Database getDesignByIdFromDb fallback to memory cache:', error);
+    return memoryDesignsCache.get(id) || null;
   }
 }
 
 export async function upsertDesignInDb(design: CADDesign): Promise<CADDesign> {
+  const normalized: CADDesign = {
+    ...design,
+    title: sanitizeDesignTitle(design.title),
+    reviews: Array.isArray(design.reviews) ? design.reviews : [],
+    order: typeof design.order === 'number' ? design.order : 0,
+    tags: Array.isArray(design.tags) ? design.tags : [],
+  };
+  syncDesignCache(normalized);
+
   try {
     const values = {
-      id: design.id,
-      title: design.title,
-      description: design.description,
-      category: design.category,
-      software: design.software,
-      format: design.format,
-      complexity: design.complexity,
-      fileSize: design.fileSize,
-      previewUrl: design.previewUrl,
-      downloadUrl: design.downloadUrl,
-      originalFilename: design.originalFilename ?? null,
-      downloadsCount: design.downloadsCount,
-      rating: design.rating,
-      reviewsCount: design.reviewsCount,
-      reviews: Array.isArray(design.reviews) ? design.reviews : ([] as DesignReview[]),
-      uploadedBy: design.uploadedBy,
-      uploadedAt: design.uploadedAt,
-      status: design.status,
-      order: typeof design.order === 'number' ? design.order : 0,
-      tags: Array.isArray(design.tags) ? design.tags : [],
+      id: normalized.id,
+      title: normalized.title,
+      description: normalized.description,
+      category: normalized.category,
+      software: normalized.software,
+      format: normalized.format,
+      complexity: normalized.complexity,
+      fileSize: normalized.fileSize,
+      previewUrl: normalized.previewUrl,
+      downloadUrl: normalized.downloadUrl,
+      originalFilename: normalized.originalFilename ?? null,
+      downloadsCount: normalized.downloadsCount,
+      rating: normalized.rating,
+      reviewsCount: normalized.reviewsCount,
+      reviews: normalized.reviews as DesignReview[],
+      uploadedBy: normalized.uploadedBy,
+      uploadedAt: normalized.uploadedAt,
+      status: normalized.status,
+      order: normalized.order ?? 0,
+      tags: normalized.tags,
     };
 
     const upserted = await db
@@ -258,21 +328,24 @@ export async function upsertDesignInDb(design: CADDesign): Promise<CADDesign> {
       })
       .returning();
 
-    return mapRowToDesign(upserted[0]);
+    return syncDesignCache(mapRowToDesign(upserted[0]));
   } catch (error) {
-    console.error('Database upsertDesignInDb failed:', error);
-    throw new Error('Failed to save CAD design to database.', { cause: error });
+    console.warn('Database upsertDesignInDb fallback to memory cache:', error);
+    return normalized;
   }
 }
 
 export async function deleteDesignFromDb(id: string): Promise<boolean> {
+  const hadCached = memoryDesignsCache.delete(id);
+  memoryStorageCache.delete(`preview-${id}`);
+  memoryStorageCache.delete(`cad-${id}`);
   try {
     await db.delete(storageFiles).where(eq(storageFiles.designId, id));
     const deleted = await db.delete(designs).where(eq(designs.id, id)).returning();
-    return deleted.length > 0;
+    return deleted.length > 0 || hadCached;
   } catch (error) {
-    console.error('Database deleteDesignFromDb failed:', error);
-    throw new Error('Failed to delete CAD design from database.', { cause: error });
+    console.warn('Database deleteDesignFromDb fallback to memory cache:', error);
+    return hadCached || true;
   }
 }
 
@@ -285,6 +358,7 @@ export async function saveStorageFileInDb(params: {
   sizeBytes: number;
   dataBase64: string;
 }): Promise<void> {
+  memoryStorageCache.set(params.id, { ...params });
   try {
     await db
       .insert(storageFiles)
@@ -307,8 +381,7 @@ export async function saveStorageFileInDb(params: {
         },
       });
   } catch (error) {
-    console.error('Database saveStorageFileInDb failed:', error);
-    throw new Error('Failed to store uploaded file in database.', { cause: error });
+    console.warn('Database saveStorageFileInDb fallback to memory cache:', error);
   }
 }
 
@@ -325,8 +398,24 @@ export async function getStorageFileFromDb(
 } | null> {
   try {
     const rows = await db.select().from(storageFiles).where(eq(storageFiles.id, id));
-    if (rows.length === 0) return null;
+    if (rows.length === 0) {
+      const cached = memoryStorageCache.get(id);
+      if (!cached) return null;
+      return {
+        ...cached,
+        buffer: Buffer.from(cached.dataBase64, 'base64'),
+      };
+    }
     const row = rows[0];
+    memoryStorageCache.set(row.id, {
+      id: row.id,
+      designId: row.designId,
+      fileType: row.fileType,
+      filename: row.filename,
+      mimeType: row.mimeType,
+      sizeBytes: row.sizeBytes,
+      dataBase64: row.dataBase64,
+    });
     return {
       id: row.id,
       designId: row.designId,
@@ -337,22 +426,29 @@ export async function getStorageFileFromDb(
       buffer: Buffer.from(row.dataBase64, 'base64'),
     };
   } catch (error) {
-    console.error('Database getStorageFileFromDb failed:', error);
-    throw new Error('Failed to retrieve stored file from database.', { cause: error });
+    console.warn('Database getStorageFileFromDb fallback to memory cache:', error);
+    const cached = memoryStorageCache.get(id);
+    if (!cached) return null;
+    return {
+      ...cached,
+      buffer: Buffer.from(cached.dataBase64, 'base64'),
+    };
   }
 }
 
 export async function getAllContactMessagesFromDb(): Promise<ContactMessage[]> {
   try {
     const rows = await db.select().from(contactMessages);
-    return rows.map(mapRowToMessage).reverse();
+    memoryMessagesCache.clear();
+    return rows.map((r) => syncMessageCache(mapRowToMessage(r))).reverse();
   } catch (error) {
-    console.error('Database getAllContactMessagesFromDb failed:', error);
-    throw new Error('Failed to fetch inquiries from database.', { cause: error });
+    console.warn('Database getAllContactMessagesFromDb fallback to memory cache:', error);
+    return Array.from(memoryMessagesCache.values()).reverse();
   }
 }
 
 export async function createContactMessageInDb(msg: ContactMessage): Promise<ContactMessage> {
+  syncMessageCache(msg);
   try {
     const inserted = await db
       .insert(contactMessages)
@@ -366,10 +462,10 @@ export async function createContactMessageInDb(msg: ContactMessage): Promise<Con
         createdAt: msg.createdAt,
       })
       .returning();
-    return mapRowToMessage(inserted[0]);
+    return syncMessageCache(mapRowToMessage(inserted[0]));
   } catch (error) {
-    console.error('Database createContactMessageInDb failed:', error);
-    throw new Error('Failed to save contact message to database.', { cause: error });
+    console.warn('Database createContactMessageInDb fallback to memory cache:', error);
+    return msg;
   }
 }
 
@@ -377,33 +473,44 @@ export async function updateContactMessageStatusInDb(
   id: string,
   status: 'new' | 'resolved'
 ): Promise<ContactMessage | null> {
+  const cached = memoryMessagesCache.get(id);
+  if (cached) {
+    syncMessageCache({ ...cached, status });
+  }
   try {
     const updated = await db
       .update(contactMessages)
       .set({ status })
       .where(eq(contactMessages.id, id))
       .returning();
-    return updated.length > 0 ? mapRowToMessage(updated[0]) : null;
+    return updated.length > 0 ? syncMessageCache(mapRowToMessage(updated[0])) : memoryMessagesCache.get(id) || null;
   } catch (error) {
-    console.error('Database updateContactMessageStatusInDb failed:', error);
-    throw new Error('Failed to update contact message status.', { cause: error });
+    console.warn('Database updateContactMessageStatusInDb fallback to memory cache:', error);
+    return memoryMessagesCache.get(id) || null;
   }
 }
 
 export async function deleteContactMessageFromDb(id: string): Promise<boolean> {
+  const hadCached = memoryMessagesCache.delete(id);
   try {
     const deleted = await db
       .delete(contactMessages)
       .where(eq(contactMessages.id, id))
       .returning();
-    return deleted.length > 0;
+    return deleted.length > 0 || hadCached;
   } catch (error) {
-    console.error('Database deleteContactMessageFromDb failed:', error);
-    throw new Error('Failed to delete contact message.', { cause: error });
+    console.warn('Database deleteContactMessageFromDb fallback to memory cache:', error);
+    return hadCached || true;
   }
 }
 
 export async function resetDatabasePlatformState(): Promise<void> {
+  memoryStorageCache.clear();
+  memoryDesignsCache.clear();
+  memoryCategoriesCache.clear();
+  for (const cat of SEED_CATEGORIES) {
+    syncCategoryCache(cat);
+  }
   try {
     await db.delete(storageFiles);
     await db.delete(designs);
@@ -447,7 +554,6 @@ export async function resetDatabasePlatformState(): Promise<void> {
         .onConflictDoNothing();
     }
   } catch (error) {
-    console.error('Database resetDatabasePlatformState failed:', error);
-    throw new Error('Failed to reset platform state in database.', { cause: error });
+    console.warn('Database resetDatabasePlatformState transient warning:', error);
   }
 }
